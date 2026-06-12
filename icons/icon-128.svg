@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg-128" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4338ca;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="film-128" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fde68a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="23" ry="23" fill="url(#bg-128)"/>
+  <rect x="19.2" y="28.16" width="89.6" height="71.68" rx="5.12" fill="url(#film-128)" stroke="#fcd34d" stroke-width="2.56"/>
+  <circle cx="28.16" cy="38.4" r="3.2" fill="#6366f1"/>
+  <circle cx="99.84" cy="38.4" r="3.2" fill="#6366f1"/>
+  <circle cx="28.16" cy="51.2" r="3.2" fill="#6366f1"/>
+  <circle cx="99.84" cy="51.2" r="3.2" fill="#6366f1"/>
+  <circle cx="28.16" cy="64" r="3.2" fill="#6366f1"/>
+  <circle cx="99.84" cy="64" r="3.2" fill="#6366f1"/>
+  <circle cx="28.16" cy="76.8" r="3.2" fill="#6366f1"/>
+  <circle cx="99.84" cy="76.8" r="3.2" fill="#6366f1"/>
+  <circle cx="28.16" cy="89.6" r="3.2" fill="#6366f1"/>
+  <circle cx="99.84" cy="89.6" r="3.2" fill="#6366f1"/>
+  <rect x="38.4" y="40.96" width="51.2" height="46.08" rx="2.56" fill="#12151d" stroke="#818cf8" stroke-width="1.28"/>
+  <circle cx="51.2" cy="61.44" r="7.68" fill="#fde68a" stroke="#f59e0b" stroke-width="1.92"/>
+  <circle cx="49.28" cy="58.88" r="1.024" fill="#12151d"/>
+  <circle cx="53.12" cy="58.88" r="1.024" fill="#12151d"/>
+  <path d="M 48.64 65.28 Q 51.2 67.84 53.76 65.28" stroke="#12151d" stroke-width="1.92" fill="none" stroke-linecap="round"/>
+  <circle cx="76.8" cy="61.44" r="7.68" fill="#fbbf24" stroke="#d97706" stroke-width="1.92"/>
+  <circle cx="74.88" cy="58.88" r="1.024" fill="#12151d"/>
+  <circle cx="78.72" cy="58.88" r="1.024" fill="#12151d"/>
+  <path d="M 74.24 66.56 Q 76.8 64 79.36 66.56" stroke="#12151d" stroke-width="1.92" fill="none" stroke-linecap="round"/>
+  <rect x="38.4" y="93.44" width="51.2" height="17.92" rx="2.56" fill="#6366f1"/>
+  <text x="64" y="106.88" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="10.24" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">导演台</text>
+</svg>

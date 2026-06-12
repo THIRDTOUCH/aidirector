@@ -1,0 +1,106 @@
+{
+  "name": "AI 导演台 · Director Console",
+  "short_name": "导演台",
+  "version": "1.0.0",
+  "versionCode": 100,
+  "description": "AI 驱动的动漫短剧创作工具 —— 从剧本到分镜全流程，纯浏览器版",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#6366f1",
+  "dir": "ltr",
+  "lang": "zh-CN",
+  "categories": ["productivity", "writing", "tools"],
+  "icons": [
+    {
+      "src": "icons/icon-72.svg",
+      "sizes": "72x72",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-96.svg",
+      "sizes": "96x96",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-128.svg",
+      "sizes": "128x128",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-144.svg",
+      "sizes": "144x144",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-152.svg",
+      "sizes": "152x152",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-384.svg",
+      "sizes": "384x384",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "新建项目",
+      "short_name": "新建",
+      "description": "创建一个新的短剧项目",
+      "url": "./index.html?action=new",
+      "icons": [
+        { "src": "icons/icon-96.svg", "sizes": "96x96" }
+      ]
+    },
+    {
+      "name": "打开分镜",
+      "short_name": "分镜",
+      "description": "快速切换到分镜设计视图",
+      "url": "./index.html?tab=storyboard",
+      "icons": [
+        { "src": "icons/icon-96.svg", "sizes": "96x96" }
+      ]
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./index.html",
+      "accept": {
+        "application/json": [".json"]
+      },
+      "icons": [
+        { "src": "icons/icon-96.svg", "sizes": "96x96" }
+      ],
+      "launch_type": "single-client"
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+directorconsole",
+      "url": "./?project=%s"
+    }
+  ],
+  "prefer_related_applications": false
+}

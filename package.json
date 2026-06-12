@@ -1,0 +1,12 @@
+{
+  "name": "aidirector",
+  "productName": "AI 导演台",
+  "version": "1.0.0",
+  "description": "AI 驱动的动漫短剧创作工具 —— 从剧本到分镜全流程，纯浏览器版",
+  "author": "aidirector",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "echo \"直接在浏览器中打开 index.html 即可使用\",或者 \"npx serve .\""
+  }
+}

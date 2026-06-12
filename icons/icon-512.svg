@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4338ca;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="film-512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fde68a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="92" ry="92" fill="url(#bg-512)"/>
+  <rect x="76.8" y="112.64" width="358.4" height="286.72" rx="20.48" fill="url(#film-512)" stroke="#fcd34d" stroke-width="10.24"/>
+  <circle cx="112.64" cy="153.6" r="12.8" fill="#6366f1"/>
+  <circle cx="112.64" cy="204.8" r="12.8" fill="#6366f1"/>
+  <circle cx="112.64" cy="256" r="12.8" fill="#6366f1"/>
+  <circle cx="112.64" cy="307.2" r="12.8" fill="#6366f1"/>
+  <circle cx="112.64" cy="358.4" r="12.8" fill="#6366f1"/>
+  <circle cx="399.36" cy="153.6" r="12.8" fill="#6366f1"/>
+  <circle cx="399.36" cy="204.8" r="12.8" fill="#6366f1"/>
+  <circle cx="399.36" cy="256" r="12.8" fill="#6366f1"/>
+  <circle cx="399.36" cy="307.2" r="12.8" fill="#6366f1"/>
+  <circle cx="399.36" cy="358.4" r="12.8" fill="#6366f1"/>
+  <rect x="153.6" y="163.84" width="204.8" height="184.32" rx="10.24" fill="#12151d" stroke="#818cf8" stroke-width="5.12"/>
+  <circle cx="204.8" cy="245.76" r="30.72" fill="#fde68a" stroke="#f59e0b" stroke-width="7.68"/>
+  <circle cx="197.12" cy="235.52" r="4.096" fill="#12151d"/>
+  <circle cx="212.48" cy="235.52" r="4.096" fill="#12151d"/>
+  <path d="M 194.56 261.12 Q 204.8 271.36 215.04 261.12" stroke="#12151d" stroke-width="7.68" fill="none" stroke-linecap="round"/>
+  <circle cx="307.2" cy="245.76" r="30.72" fill="#fbbf24" stroke="#d97706" stroke-width="7.68"/>
+  <circle cx="299.52" cy="235.52" r="4.096" fill="#12151d"/>
+  <circle cx="314.88" cy="235.52" r="4.096" fill="#12151d"/>
+  <path d="M 296.96 266.24 Q 307.2 256 317.44 266.24" stroke="#12151d" stroke-width="7.68" fill="none" stroke-linecap="round"/>
+  <rect x="153.6" y="373.76" width="204.8" height="71.68" rx="10.24" fill="#6366f1"/>
+  <text x="256" y="427.52" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="40.96" font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">导演台</text>
+</svg>

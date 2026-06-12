@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="description" content="AI 驱动的动漫短剧创作工具 —— 从剧本到分镜全流程，纯浏览器版" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="导演台" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="msapplication-TileColor" content="#6366f1" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.svg" />
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.svg" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== 顶部导航栏 ===== -->
+  <header class="top-bar">
+    <div class="brand">
+      <div class="logo">🎬</div>
+      <div class="brand-text">
+        <div class="brand-title">AI 导演台</div>
+        <div class="brand-sub">Director Console · v1.0</div>
+      </div>
+    </div>
+
+    <nav class="main-tabs" id="mainTabs">
+      <button class="tab active" data-tab="project">📁 项目</button>
+      <button class="tab" data-tab="workflow">🔗 工作流</button>
+      <button class="tab" data-tab="outline">📖 大纲</button>
+      <button class="tab" data-tab="script">✍️ 剧本</button>
+      <button class="tab" data-tab="characters">👥 角色</button>
+      <button class="tab" data-tab="scenes">🏞️ 场景</button>
+      <button class="tab" data-tab="storyboard">🎞️ 分镜</button>
+      <button class="tab" data-tab="timeline">⏱️ 时间轴</button>
+      <button class="tab" data-tab="ai-panel">🤖 智能体</button>
+      <button class="tab" data-tab="ai-settings">⚙️ AI 设置</button>
+      <button class="tab" data-tab="export">📤 导出</button>
+      <button class="tab" data-tab="preview">▶️ 预览</button>
+    </nav>
+
+    <div class="top-actions">
+      <div class="status-dot" id="llmStatusDot" title="AI连接状态">
+        <span class="dot"></span>
+        <span class="status-text" id="llmStatusText">未连接</span>
+      </div>
+      <button id="btnSettings" class="btn btn-ghost" title="AI设置">⚙️</button>
+      <button id="btnExport" class="btn btn-primary" title="导出">📤 导出</button>
+    </div>
+  </header>
+
+  <!-- ===== 主内容区 ===== -->
+  <main class="content">
+
+    <!-- 项目页 -->
+    <section class="panel active" id="panel-project">
+      <div class="panel-header">
+        <h2>📁 项目管理</h2>
+        <div class="panel-actions">
+          <input type="text" id="projectSearch" placeholder="搜索项目..." />
+          <button class="btn btn-primary" id="btnNewProject">+ 新建项目</button>
+        </div>
+      </div>
+      <div class="project-grid" id="projectGrid">
+        <!-- 项目卡片由JS注入 -->
+      </div>
+    </section>
+
+    <!-- 大纲页 -->
+    <section class="panel" id="panel-outline">
+      <div class="panel-header">
+        <h2>📖 故事大纲</h2>
+        <div class="panel-actions">
+          <select id="outlineProject">
+            <option value="">— 选择项目 —</option>
+          </select>
+          <button class="btn" id="btnGenOutline">✨ AI 生成大纲</button>
+        </div>
+      </div>
+      <div class="outline-body">
+        <div class="outline-meta">
+          <label>片名：<input type="text" id="projTitle" placeholder="例如：霓虹夜都市" /></label>
+          <label>类型：
+            <select id="projGenre">
+              <option>爱情</option><option>悬疑</option><option>科幻</option>
+              <option>喜剧</option><option>动作</option><option>奇幻</option>
+              <option>剧情</option><option>恐怖</option><option>历史</option>
+            </select>
+          </label>
+          <label>时长：<input type="text" id="projDuration" placeholder="例如：3分钟短剧" value="3分钟短剧" /></label>
+          <label>风格：
+            <select id="projStyle">
+              <option>写实 / 电影感</option><option>动漫 / 二次元</option>
+              <option>赛博朋克</option><option>水墨国风</option>
+              <option>纪录片</option><option>黑暗哥特</option>
+            </select>
+          </label>
+          <label>一句话简介：<textarea id="projLogline" rows="2" placeholder="例如：一个失意程序员在AI引导下穿越回过去改变命运..."></textarea></label>
+        </div>
+        <div class="outline-editor">
+          <label>完整大纲：<span class="hint">（支持Markdown格式，可由AI自动生成）</span></label>
+          <textarea id="projOutline" rows="16" placeholder="## 核心主题
+
+## 主要角色
+- 角色A：...
+- 角色B：...
+
+## 故事大纲
+### 第一幕：...
+### 第二幕：...
+### 第三幕：...
+"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- 剧本页 -->
+    <section class="panel" id="panel-script">
+      <div class="panel-header">
+        <h2>✍️ 剧本</h2>
+        <div class="panel-actions">
+          <button class="btn" id="btnGenScript">✨ AI 基于大纲写剧本</button>
+          <button class="btn" id="btnGenScriptContinue">➡️ 续写</button>
+        </div>
+      </div>
+      <div class="script-body">
+        <textarea id="projScript" rows="24" placeholder="场景一：【城市街道 · 夜 · 外】
+灯光闪烁的霓虹招牌下，林雨独自伫立在街角。雨水打湿了她的肩头。
+林雨（独白）：那一天之后，我再也分不清真实与虚拟……
+
+（远处传来引擎声，一辆黑色轿车急停在她面前）
+"></textarea>
+      </div>
+    </section>
+
+    <!-- 角色页 -->
+    <section class="panel" id="panel-characters">
+      <div class="panel-header">
+        <h2>👥 角色库</h2>
+        <div class="panel-actions">
+          <button class="btn btn-primary" id="btnNewChar">+ 添加角色</button>
+          <button class="btn" id="btnGenChars">✨ AI 生成角色</button>
+        </div>
+      </div>
+      <div class="char-grid" id="charGrid">
+        <!-- 角色卡片 -->
+      </div>
+    </section>
+
+    <!-- 场景页 -->
+    <section class="panel" id="panel-scenes">
+      <div class="panel-header">
+        <h2>🏞️ 场景库</h2>
+        <div class="panel-actions">
+          <button class="btn btn-primary" id="btnNewScene">+ 添加场景</button>
+          <button class="btn" id="btnGenScenes">✨ AI 生成场景</button>
+        </div>
+      </div>
+      <div class="scene-grid" id="sceneGrid">
+        <!-- 场景卡片 -->
+      </div>
+    </section>
+
+    <!-- 分镜页（核心） -->
+    <section class="panel" id="panel-storyboard">
+      <div class="panel-header">
+        <h2>🎞️ 分镜脚本</h2>
+        <div class="panel-actions">
+          <button class="btn" id="btnNewShot">+ 新增分镜</button>
+          <button class="btn" id="btnGenShots">✨ AI 剧本→分镜</button>
+          <button class="btn btn-primary" id="btnBatchGen">🎬 批量生成画面</button>
+        </div>
+      </div>
+      <div class="storyboard-toolbar">
+        <span class="hint">💡 点击卡片可编辑详细信息 · 景别/运镜/时长/台词/画面描述/AI绘图提示词</span>
+      </div>
+      <div class="shot-list" id="shotList">
+        <!-- 分镜卡片 -->
+      </div>
+    </section>
+
+    <!-- 时间轴页 -->
+    <section class="panel" id="panel-timeline">
+      <div class="panel-header">
+        <h2>⏱️ 镜头时间轴 / 调度</h2>
+        <div class="panel-actions">
+          <button class="btn" id="btnAutoOrder">📐 自动排序</button>
+          <button class="btn" id="btnPlayTimeline">▶️ 预览播放</button>
+        </div>
+      </div>
+      <div class="timeline-wrap">
+        <div class="timeline-track" id="timelineTrack">
+          <!-- 时间轴由JS注入 -->
+        </div>
+        <div class="timeline-summary" id="timelineSummary">
+          总时长：0秒 · 共0个分镜
+        </div>
+      </div>
+    </section>
+
+    <!-- 智能体页 -->
+    <section class="panel" id="panel-ai-panel">
+      <div class="panel-header">
+        <h2>🤖 AI 智能体协作</h2>
+        <div class="panel-actions">
+          <button class="btn" id="btnRunPipeline">🚀 一键完成全流程</button>
+        </div>
+      </div>
+      <div class="ai-panel-body">
+        <div class="agents-grid">
+          <!-- 智能体卡片 -->
+          <div class="agent-card" data-role="idea">
+            <div class="agent-icon">💡</div>
+            <div class="agent-name">创意总监</div>
+            <div class="agent-desc">一句话创意 → 完整大纲</div>
+            <textarea id="ideaInput" rows="3" placeholder="例如：一个外卖员穿越到古代，用现代知识拯救危机..."></textarea>
+            <button class="btn btn-primary" data-task="idea">生成大纲</button>
+          </div>
+          <div class="agent-card" data-role="writer">
+            <div class="agent-icon">✍️</div>
+            <div class="agent-name">编剧</div>
+            <div class="agent-desc">大纲 → 完整剧本</div>
+            <button class="btn" data-task="script">写剧本</button>
+          </div>
+          <div class="agent-card" data-role="shot-designer">
+            <div class="agent-icon">🎬</div>
+            <div class="agent-name">分镜师</div>
+            <div class="agent-desc">剧本 → 镜头脚本</div>
+            <button class="btn" data-task="shots">生成分镜</button>
+          </div>
+          <div class="agent-card" data-role="character">
+            <div class="agent-icon">👤</div>
+            <div class="agent-name">角色设计师</div>
+            <div class="agent-desc">大纲 → 角色设定 + 提示词</div>
+            <button class="btn" data-task="chars">生成角色</button>
+          </div>
+          <div class="agent-card" data-role="scenographer">
+            <div class="agent-icon">🏞️</div>
+            <div class="agent-name">美术指导</div>
+            <div class="agent-desc">剧本 → 场景库</div>
+            <button class="btn" data-task="scenes">生成场景</button>
+          </div>
+          <div class="agent-card" data-role="visual">
+            <div class="agent-icon">🖼️</div>
+            <div class="agent-name">视觉生成</div>
+            <div class="agent-desc">分镜 → 静态画面 / 视频</div>
+            <button class="btn" data-task="images">批量绘图</button>
+          </div>
+        </div>
+        <div class="pipeline-log" id="pipelineLog">
+          <div class="log-title">📋 流水线日志</div>
+          <div class="log-body" id="logBody">
+            <div class="log-line muted">等待任务启动…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 预览页 -->
+    <section class="panel" id="panel-preview">
+      <div class="panel-header">
+        <h2>▶️ 预览 / 导出</h2>
+        <div class="panel-actions">
+          <button class="btn" id="btnPlayPreview">▶️ 播放分镜</button>
+          <button class="btn" id="btnExportMarkdown">📝 导出剧本(Markdown)</button>
+          <button class="btn" id="btnExportJSON">📦 导出JSON</button>
+          <button class="btn btn-primary" id="btnExportHTML">🌐 导出HTML放映页</button>
+        </div>
+      </div>
+      <div class="preview-body" id="previewBody">
+        <div class="preview-player" id="previewPlayer">
+          <div class="player-cover">
+            <div class="cover-title" id="coverTitle">选择或新建项目后开始创作</div>
+            <div class="cover-hint">使用左侧智能体一键生成完整短片</div>
+          </div>
+        </div>
+        <div class="preview-resizer" id="previewResizer" title="拖拽调整信息栏宽度"></div>
+        <div class="preview-info" id="previewInfo">
+          <button class="preview-info-toggle" id="previewInfoToggle" title="折叠信息栏">›</button>
+          <div class="preview-info-inner">
+            <h3>项目信息</h3>
+            <div class="info-row"><span class="info-label">片名：</span><span id="infoTitle">—</span></div>
+            <div class="info-row"><span class="info-label">类型：</span><span id="infoGenre">—</span></div>
+            <div class="info-row"><span class="info-label">时长：</span><span id="infoDuration">—</span></div>
+            <div class="info-row"><span class="info-label">风格：</span><span id="infoStyle">—</span></div>
+            <div class="info-row"><span class="info-label">分镜数：</span><span id="infoShotCount">0</span></div>
+            <div class="info-row"><span class="info-label">角色数：</span><span id="infoCharCount">0</span></div>
+            <div class="info-row"><span class="info-label">场景数：</span><span id="infoSceneCount">0</span></div>
+            <div class="info-summary" id="infoSummary" style="display:none;"></div>
+          </div>
+          <div class="preview-info-collapsed" id="previewInfoCollapsed">📋 项目信息</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 工作流页：5步流水线 -->
+    <section class="panel" id="panel-workflow">
+      <div class="panel-header">
+        <h2>🔗 工作流 · 从剧本到成片</h2>
+        <div class="panel-sub">按步骤执行，每一步输出自动流入下一步。未填的字段会从项目中自动读取。</div>
+      </div>
+      <div class="panel-body panel-body-scroll">
+        <div class="workflow-grid" id="workflowGrid">
+          <div class="wf-card">
+            <div class="wf-step">Step 1</div>
+            <div class="wf-title">📖 编写 / 生成故事大纲</div>
+            <div class="wf-desc">先在「项目」页创建项目，填写一句话概要，或让 AI 自动生成完整大纲。</div>
+            <div class="wf-stats"><span id="wf-stat-outline">未填写</span></div>
+            <div class="wf-actions">
+              <button class="btn btn-primary" id="wfBtnOutline">前往大纲页 →</button>
+            </div>
+          </div>
+          <div class="wf-card">
+            <div class="wf-step">Step 2</div>
+            <div class="wf-title">✍️ 生成 / 编写剧本</div>
+            <div class="wf-desc">基于大纲让 AI 生成剧本，或直接粘贴你已写好的剧本内容。</div>
+            <div class="wf-stats"><span id="wf-stat-script">未填写</span></div>
+            <div class="wf-actions">
+              <button class="btn" id="wfBtnScript">前往剧本页 →</button>
+            </div>
+          </div>
+          <div class="wf-card">
+            <div class="wf-step">Step 3</div>
+            <div class="wf-title">👥 + 🏞️ 拆解角色 & 场景</div>
+            <div class="wf-desc">从剧本中自动提取角色锚点、场景描述，建立一致性数据。</div>
+            <div class="wf-stats"><span id="wf-stat-chars">0 角色</span> · <span id="wf-stat-scenes">0 场景</span></div>
+            <div class="wf-actions">
+              <button class="btn" id="wfBtnChars">✨ AI 生成角色</button>
+              <button class="btn" id="wfBtnScenes">✨ AI 生成场景</button>
+            </div>
+          </div>
+          <div class="wf-card">
+            <div class="wf-step">Step 4</div>
+            <div class="wf-title">🎞️ 分镜表自动生成</div>
+            <div class="wf-desc">剧本 → 分镜表（景别 / 机位 / 运镜 / 时长，自动关联角色与场景）。</div>
+            <div class="wf-stats"><span id="wf-stat-shots">0 分镜</span></div>
+            <div class="wf-actions">
+              <button class="btn" id="wfBtnGenShots">✨ AI 剧本 → 分镜</button>
+              <button class="btn" id="wfBtnShots">前往分镜页 →</button>
+            </div>
+          </div>
+          <div class="wf-card">
+            <div class="wf-step">Step 5</div>
+            <div class="wf-title">🎬 批量出图 / 视频合成</div>
+            <div class="wf-desc">为每个分镜批量生成图像提示词，或生成视频文件清单，输出 FFmpeg 合成脚本。</div>
+            <div class="wf-stats"><span id="wf-stat-duration">总时长：—</span></div>
+            <div class="wf-actions">
+              <button class="btn" id="wfBtnBatch">🎨 批量生成绘图提示词</button>
+              <button class="btn btn-primary" id="wfBtnExport">📤 导出合成脚本</button>
+            </div>
+          </div>
+        </div>
+        <div class="workflow-log" id="workflowLog">
+          <div class="wf-log-title">📜 执行日志</div>
+          <div class="wf-log-body" id="wfLogBody">（暂无记录）</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI 设置页 -->
+    <section class="panel" id="panel-ai-settings"></section>
+
+    <!-- 导出页 -->
+    <section class="panel" id="panel-export"></section>
+
+  </main>
+
+  <!-- ===== 通用弹窗模板 ===== -->
+  <div class="modal" id="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-body" id="modalBody">
+      <div class="modal-header">
+        <div id="modalTitle">标题</div>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+      <div class="modal-content" id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- ===== Toast 消息 ===== -->
+  <div class="toast-area" id="toastArea"></div>
+
+  <!-- ===== 底部状态栏 ===== -->
+  <footer class="status-bar">
+    <div class="status-left">
+      <span id="statusProject">📂 未选择项目</span>
+      <span class="divider">|</span>
+      <span id="statusSaved">💾 已保存</span>
+    </div>
+    <div class="status-right">
+      <span>🎬 AI 导演台 · 本地运行 · 数据保存在浏览器</span>
+    </div>
+  </footer>
+
+  <!-- ===== 脚本 ===== -->
+  <!-- 预设数据（视觉风格/摄影档案/镜头字典/模型表等，挂载到 window.DC） -->
+  <script src="js/utils/perf.js"></script>
+  <script src="js/utils/version-manager.js"></script>
+  <script src="js/data/preset-data.js"></script>
+  <script src="js/data/storyboard-templates.js"></script>
+  <script src="js/data/beat-sheet.js"></script>
+  <script src="js/core/app.js"></script>
+  <script src="js/integrations/app-llm.js"></script>
+  <script src="js/integrations/app-comfyui.js"></script>
+  <script src="js/modules/project-manager.js"></script>
+  <script src="js/modules/character-lib.js"></script>
+  <script src="js/modules/scene-lib.js"></script>
+  <script src="js/modules/storyboard.js"></script>
+  <script src="js/modules/timeline.js"></script>
+  <script src="js/modules/ai-pipeline.js"></script>
+  <script src="js/modules/exporter.js"></script>
+  <!-- 方案B新增模块 -->
+  <script src="js/core/ai-core.js"></script>
+  <script src="js/modules/script-parser.js"></script>
+  <script src="js/modules/ffmpeg-exporter.js"></script>
+  <script src="js/modules/workflow-init.js"></script>
+  <script>
+    /* ===== 注册 Service Worker（PWA 离线缓存）===== */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(function (reg) {
+            console.log('[PWA] Service Worker 注册成功，作用域:', reg.scope);
+          })
+          .catch(function (err) {
+            console.warn('[PWA] Service Worker 注册失败（需通过 http/https 访问）:', err);
+          });
+      });
+    }
+
+    /* 初始化 AI 设置页与导出页（必须在模块加载完成之后） */
+    window.addEventListener('load', function () {
+      var DC = window.DC;
+      if (DC && DC.AICore && typeof DC.AICore.renderSettings === 'function') {
+        DC.AICore.renderSettings('panel-ai-settings');
+      }
+      if (DC && DC.FFmpegExporter && typeof DC.FFmpegExporter.render === 'function') {
+        DC.FFmpegExporter.render('panel-export');
+      }
+    });
+  </script>
+
+</body>
+</html>

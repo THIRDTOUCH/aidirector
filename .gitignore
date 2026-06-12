@@ -1,0 +1,55 @@
+# === OS 生成文件 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 编辑器 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === Node / 构建产物 ===
+node_modules/
+dist/
+build/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# === 项目本地数据 ===
+*.user.json
+local-projects/
+backup/
+snapshots/
+
+# === PWA 开发相关 ===
+.pwa/
+.sw-cache/
+
+# === ComfyUI 生成产物 ===
+comfyui-output/
+generated-images/
+generated-videos/
+
+# === LLM API Key 本地配置 ===
+.api-key
+.secret
+.env
+.env.local
+
+# === 浏览器测试 ===
+.screenshots/
+coverage/
+
+# === 压缩文件（避免重复入仓）===
+*.tar.gz
+*.zip

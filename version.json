@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "releaseDate": "2026-06-12",
+  "minCompatibleVersion": "1.0.0",
+  "critical": false,
+  "releaseNotes": [
+    "🎬 AI 导演台正式发布 v1.0.0",
+    "📖 支持大纲 / 剧本 / 分镜 / 角色库 / 场景库 / 时间轴 / 智能体 / 工作流全流程",
+    "🤖 集成多供应商 LLM（OpenAI / Anthropic / 通义千问 / 自定义端点）",
+    "🖼️ 支持 ComfyUI 批量生图与图像提示词生成",
+    "📤 支持导出 JSON / Markdown / HTML 放映页 / FFmpeg 合成脚本",
+    "💾 本地 localStorage 持久化，支持数据导入导出",
+    "✨ PWA 支持：离线缓存，添加到主屏幕，独立窗口运行"
+  ],
+  "downloadUrl": "./",
+  "hash": "auto",
+  "features": {
+    "storyboard": true,
+    "characterLibrary": true,
+    "sceneLibrary": true,
+    "aiAssistant": true,
+    "multiProviderLLM": true,
+    "comfyUI": true,
+    "export": true,
+    "pwa": true,
+    "offline": true
+  }
+}
