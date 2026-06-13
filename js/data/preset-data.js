@@ -768,6 +768,48 @@
   window.DC.T2I_MODELS = T2I_MODELS;
   window.DC.T2V_MODELS = T2V_MODELS;
 
+  // Ⓜ 媒体类型（供 Prompt Builder 翻译摄影参数）
+  window.DC.MEDIA_TYPE_TOKENS = {
+    cinematic: {
+      rig: 'mounted', movement: 'movement', focus: 'focus',
+      dof: 'depth of field', lighting: 'lighting', blur: 'blur',
+      prefix: '', lens: 'lens'
+    },
+    animation: {
+      rig: 'on tripod', movement: 'shot', focus: 'perspective',
+      dof: 'background blur', lighting: 'lighting', blur: 'soft blur',
+      prefix: 'anime style, ', lens: 'composition'
+    },
+    'stop-motion': {
+      rig: 'mounted', movement: 'movement', focus: 'focus',
+      dof: 'depth of field', lighting: 'lighting', blur: 'blur',
+      prefix: 'stop motion animation, ', lens: 'lens'
+    },
+    graphic: {
+      rig: 'mounted', movement: 'shot', focus: 'focus',
+      dof: 'soft blur', lighting: 'lighting', blur: 'blur',
+      prefix: 'flat illustration, ', lens: 'composition'
+    }
+  };
+
+  // Ⓜ 常见别名（向后兼容）
+  window.DC.VISUAL_STYLES = VISUAL_STYLE_PRESETS;
+  window.DC.STYLE_PRESETS = VISUAL_STYLE_PRESETS;
+  window.DC.CAMERA_RIG_PRESETS = []; // 由 prompt-builder.js 填充覆盖
+  window.DC.LIGHTING_STYLE_PRESETS = []; // 同上
+  window.DC.MOVEMENT_SPEED_PRESETS = []; // 同上
+  window.DC.SHOT_SIZE_PRESETS_B = []; // 同上
+  window.DC.LIGHTING_DIRECTION_PRESETS = []; // 同上
+  window.DC.EMOTION_PRESETS = {}; // 同上
+  window.DC.ATMOSPHERIC_EFFECT_PRESETS = {}; // 同上
+  window.DC.EFFECT_INTENSITY_PRESETS = []; // 同上
+  window.DC.TECHNIQUE_PRESETS = []; // 同上
+  window.DC.FOCAL_LENGTH_PRESETS = []; // 同上
+  window.DC.COLOR_TEMP_PRESETS = []; // 同上
+  window.DC.DEPTH_OF_FIELD_PRESETS = []; // 同上
+  window.DC.PLAYBACK_SPEED_PRESETS = []; // 同上
+  window.DC.MODEL_REGISTRY_DATA = []; // 由 model-registry.js 填充覆盖
+
   console.log('[DC Data] 预设数据已加载：视觉风格=' + VISUAL_STYLE_PRESETS.length +
               '，摄影风格=' + CINEMATOGRAPHY_PROFILES.length +
               '，T2I模型=' + T2I_MODELS.length +

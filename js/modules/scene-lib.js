@@ -57,20 +57,22 @@
         </div>` : ''}
         ${s.prompt ? `<div class="pc-prompt">🎨 ${DC.Utils.escapeHtml(s.prompt)}</div>` : ''}
         ${s.promptEn ? `<div class="pc-prompt prompt-en">🇬🇧 ${DC.Utils.escapeHtml(s.promptEn)}</div>` : ''}`;
-      const [ebtn, dbtn] = card.querySelectorAll('.pc-actions .btn-icon');
-      ebtn.onclick = (e) => { e.stopPropagation(); openEditor(s, idx); };
-      dbtn.onclick = (e) => {
-        e.stopPropagation();
-        DC.modal.confirm('确认删除场景：' + DC.Utils.escapeHtml(s.name) + '？',
-          () => {
-            const arr = getScenes().filter((_, i) => i !== idx);
-            saveScenes(arr);
-            render();
-            DC.toast('已删除场景', 'success');
-          },
-          { title: '删除场景', confirmText: '删除' }
-        );
-      };
+      const actionBtns = card.querySelectorAll('.pc-actions .btn-icon');
+      if (actionBtns.length >= 2) {
+        actionBtns[0].onclick = (e) => { e.stopPropagation(); openEditor(s, idx); };
+        actionBtns[1].onclick = (e) => {
+          e.stopPropagation();
+          DC.modal.confirm('确认删除场景：' + DC.Utils.escapeHtml(s.name) + '？',
+            () => {
+              const arr = getScenes().filter((_, i) => i !== idx);
+              saveScenes(arr);
+              render();
+              DC.toast('已删除场景', 'success');
+            },
+            { title: '删除场景', confirmText: '删除' }
+          );
+        };
+      }
       // —— 点击描述字段展开/收起 ——
       card.querySelectorAll('.pc-body-text').forEach((el) => {
         el.addEventListener('click', (e) => {
@@ -236,6 +238,9 @@
     },
     render,
     aiGenerate,
+    getScenes,
+    saveScenes,
   };
   DC.Scenes = DC.SceneManager;
+  DC.SceneLib = DC.SceneManager;
 })();

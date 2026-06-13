@@ -313,6 +313,7 @@
   window.DC = window.DC || {};
 
   window.DC.STATIC_MODEL_REGISTRY    = STATIC_MODEL_REGISTRY;
+  window.DC.MODEL_REGISTRY_DATA      = STATIC_MODEL_REGISTRY; // 别名
   window.DC.FEATURE_ROUTER_SUGGESTIONS = FEATURE_ROUTER_SUGGESTIONS;
 
   window.DC.ModelRegistry = new ModelRegistry();

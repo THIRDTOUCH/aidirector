@@ -56,20 +56,22 @@
         ${body ? `<div class="pc-body-text body"><span class="pc-body-label">体态</span>${DC.Utils.escapeHtml(body)}</div>` : ''}
         ${personality ? `<div class="pc-body-text personality"><span class="pc-body-label">性格</span>${DC.Utils.escapeHtml(personality)}</div>` : ''}
         ${c.prompt ? `<div class="pc-prompt">🎨 ${DC.Utils.escapeHtml(c.prompt)}</div>` : ''}`;
-      const [ebtn, dbtn] = card.querySelectorAll('.pc-actions .btn-icon');
-      ebtn.onclick = (e) => { e.stopPropagation(); openEditor(c, idx); };
-      dbtn.onclick = (e) => {
-        e.stopPropagation();
-        DC.modal.confirm('确认删除角色：' + DC.Utils.escapeHtml(c.name) + '？',
-          () => {
-            const arr = getChars().filter((_, i) => i !== idx);
-            saveChars(arr);
-            render();
-            DC.toast('已删除角色', 'success');
-          },
-          { title: '删除角色', confirmText: '删除' }
-        );
-      };
+      const actionBtns = card.querySelectorAll('.pc-actions .btn-icon');
+      if (actionBtns.length >= 2) {
+        actionBtns[0].onclick = (e) => { e.stopPropagation(); openEditor(c, idx); };
+        actionBtns[1].onclick = (e) => {
+          e.stopPropagation();
+          DC.modal.confirm('确认删除角色：' + DC.Utils.escapeHtml(c.name) + '？',
+            () => {
+              const arr = getChars().filter((_, i) => i !== idx);
+              saveChars(arr);
+              render();
+              DC.toast('已删除角色', 'success');
+            },
+            { title: '删除角色', confirmText: '删除' }
+          );
+        };
+      }
       // —— 点击描述字段展开/收起 ——
       card.querySelectorAll('.pc-body-text').forEach((el) => {
         el.addEventListener('click', (e) => {
@@ -230,6 +232,9 @@
     },
     render,
     aiGenerate,
+    getChars,
+    saveChars,
   };
   DC.Characters = DC.CharacterManager;
+  DC.CharacterLib = DC.CharacterManager;
 })();

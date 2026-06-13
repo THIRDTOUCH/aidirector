@@ -65,6 +65,13 @@
     delete(key) { return this.cache.delete(key); }
     clear() { this.cache.clear(); }
     get size() { return this.cache.size; }
+    // 常见别名：put/add/remove/length/keys/values
+    put(key, value) { return this.set(key, value); }
+    add(key, value) { return this.set(key, value); }
+    remove(key) { return this.cache.delete(key); }
+    get length() { return this.cache.size; }
+    keys() { return Array.from(this.cache.keys()); }
+    values() { return Array.from(this.cache.values()); }
   }
 
   // ============ VirtualScroll ============
@@ -178,15 +185,27 @@
   };
 
   // ============ 导出 ============
+  // 用独立引用避免作用域遮蔽问题
+  const _LRUCache = LRUCache;
+  const _VirtualScroll = VirtualScroll;
   window.DC.Perf = {
     debounce: PerformanceUtils.debounce.bind(PerformanceUtils),
     throttle: PerformanceUtils.throttle.bind(PerformanceUtils),
     rafThrottle: PerformanceUtils.rafThrottle.bind(PerformanceUtils),
-    LRUCache,
-    VirtualScroll,
-    LazyLoader,
-    ImageOptimizer
+    // 支持工厂调用方式：DC.Perf.LRUCache(100) 或 new DC.Perf.LRUCache(100)
+    LRUCache: function LRUCache(maxSize) {
+      return new _LRUCache(maxSize);
+    },
+    VirtualScroll: function VirtualScroll(container, options) {
+      return new _VirtualScroll(container, options);
+    },
+    LazyLoader: LazyLoader,
+    ImageOptimizer: ImageOptimizer
   };
+
+  // 让 new DC.Perf.LRUCache() 也能工作
+  window.DC.Perf.LRUCache.prototype = _LRUCache.prototype;
+  window.DC.Perf.VirtualScroll.prototype = _VirtualScroll.prototype;
 
   console.log('[DC] 性能工具集已就绪 (debounce/throttle/LRUCache/VirtualScroll/LazyLoader/ImageOptimizer)');
 })();

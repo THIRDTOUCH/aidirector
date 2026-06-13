@@ -256,24 +256,30 @@
     if (!bible) return '';
 
     const tokens = generateConsistencyTokens(bible, mediaType);
-    if (tokens.length === 0) {
-      // 无预设时使用 visualTraits
-      return bible.visualTraits || bible.name || '';
-    }
+    const hasTokens = tokens.length > 0;
+    const baseDesc = hasTokens ? tokens.join(', ') : (bible.visualTraits || bible.appearance || '');
 
-    // 动画风格特殊处理：弱化物理摄影词
+    // 动画风格特殊处理：确保始终包含 anime 风格关键词
     if (mediaType === 'animation') {
-      const animTokens = tokens.map(t => {
+      let animDesc = baseDesc;
+      if (hasTokens) {
         // 替换某些写实描述为动画版本
-        return t
+        animDesc = tokens.map(t => String(t)
           .replace('porcelain pale skin', 'smooth anime skin, pale')
           .replace('natural features', 'anime aesthetic')
-          .replace('realistic proportions', 'anime proportions');
-      });
-      return bible.name + ', ' + animTokens.join(', ');
+          .replace('realistic proportions', 'anime proportions')
+        ).join(', ');
+      }
+      // 确保包含 anime 关键词（去重）
+      const lower = animDesc.toLowerCase();
+      let prefix = '';
+      if (lower.indexOf('anime') < 0 && lower.indexOf('manga') < 0) {
+        prefix = 'anime style character, ';
+      }
+      return bible.name + ', ' + prefix + animDesc;
     }
 
-    return bible.name + ', ' + tokens.join(', ');
+    return bible.name + ', ' + baseDesc;
   }
 
   /**

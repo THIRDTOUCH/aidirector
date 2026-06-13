@@ -178,4 +178,5 @@
 
   // 对外暴露（可选）
   DC.Workflow = { refreshStats, log };
+  DC.WorkflowInit = DC.Workflow;
 })();

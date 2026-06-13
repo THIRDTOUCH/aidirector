@@ -79,6 +79,15 @@
 
   // ---------- 通用 LLM 调用（兼容多家 OpenAI 格式） ----------
   async function callLLM(userPrompt, systemPrompt, opts = {}) {
+    // 优先检查老实现：如果 DC.LLM 已就绪，直接使用它
+    if (DC.LLM && typeof DC.LLM.isReady === 'function' && DC.LLM.isReady()) {
+      try {
+        return await DC.LLM.generate(userPrompt, { system: systemPrompt, ...opts });
+      } catch (e) {
+        // 老实现失败，继续尝试新实现
+      }
+    }
+
     const config = loadConfig();
     const active = loadActiveProviders().filter((n) => {
       const c = config[n];
@@ -86,15 +95,6 @@
     });
     if (active.length === 0) {
       throw new Error('尚未配置任何 LLM API Key，请前往「AI 设置」填写');
-    }
-
-    // 若已存在 DC.LLM 且用户配置了它的 endpoint，优先沿用老实现
-    if (DC.LLM && DC.LLM.isReady && DC.LLM.isReady()) {
-      try {
-        return await DC.LLM.generate(userPrompt, { system: systemPrompt, ...opts });
-      } catch (e) {
-        // 老实现失败，继续尝试新实现
-      }
     }
 
     let lastError = null;

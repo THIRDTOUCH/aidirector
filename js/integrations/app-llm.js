@@ -139,7 +139,8 @@
     messages.push({ role: 'user', content: prompt });
 
     let url, body;
-    const stream = cfg.stream && options.stream !== false;
+    // 仅当显式请求流式或传入了 onChunk 回调时才用流
+    const stream = options.stream === true || typeof options.onChunk === 'function';
     // 支持调用方覆盖 temperature / maxTokens
     const temperature = options.temperature != null ? options.temperature : (cfg.temperature ?? 0.7);
     const maxTokens = options.maxTokens != null ? options.maxTokens : (cfg.maxTokens ?? 2048);
@@ -246,10 +247,11 @@
     // 非流式
     const data = await res.json();
     let text = '';
+    // 优先按 provider 格式解析，失败时回退到其他常见格式
     if (provider === 'ollama') {
-      text = data.message && data.message.content;
+      text = (data.message && data.message.content) || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || data.response || '';
     } else {
-      text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || (data.message && data.message.content) || data.response || '';
     }
     if (!text) throw new Error('模型未返回文本内容');
     if (options.onDone) options.onDone(text);

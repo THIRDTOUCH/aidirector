@@ -621,6 +621,8 @@
     refresh: render,
     aiSplit,
     batchGenImages,
+    getShots,
+    saveShots,
   };
   DC.Shots = DC.Storyboard;
 })();

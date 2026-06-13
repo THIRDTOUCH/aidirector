@@ -150,25 +150,29 @@ ${shotsHtml}
 </html>`;
   }
 
-  function exportMarkdown() {
-    const p = DC.ProjectManager.getCurrent();
+  function exportMarkdown(explicitProject) {
+    const p = explicitProject || DC.ProjectManager.getCurrent();
     if (!p) { DC.toast('请先选择项目', 'warning'); return; }
     const md = buildMarkdown(p);
+    if (explicitProject) return md; // 仅返回字符串（测试/程序化调用）
     download(`《${p.name || '短剧'}》-剧本.md`, md, 'text/markdown;charset=utf-8');
     DC.toast('Markdown 已导出', 'success');
   }
 
-  function exportJSON() {
-    const p = DC.ProjectManager.getCurrent();
+  function exportJSON(explicitProject) {
+    const p = explicitProject || DC.ProjectManager.getCurrent();
     if (!p) { DC.toast('请先选择项目', 'warning'); return; }
-    download(`《${p.name || '短剧'}》-项目.json`, JSON.stringify(p, null, 2), 'application/json;charset=utf-8');
+    const json = JSON.stringify(p, null, 2);
+    if (explicitProject) return json; // 测试/程序化调用时仅返回字符串
+    download(`《${p.name || '短剧'}》-项目.json`, json, 'application/json;charset=utf-8');
     DC.toast('JSON 已导出', 'success');
   }
 
-  function exportHTML() {
-    const p = DC.ProjectManager.getCurrent();
+  function exportHTML(explicitProject) {
+    const p = explicitProject || DC.ProjectManager.getCurrent();
     if (!p) { DC.toast('请先选择项目', 'warning'); return; }
     const html = buildHTML(p);
+    if (explicitProject) return html; // 测试/程序化调用时仅返回字符串
     download(`《${p.name || '短剧'}》-放映页.html`, html, 'text/html;charset=utf-8');
     DC.toast('HTML 放映页已导出', 'success');
   }

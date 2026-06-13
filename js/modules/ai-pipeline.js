@@ -396,4 +396,6 @@
     scenesAgent,
     imagesAgent,
   };
+  DC.Pipeline = DC.AIPipeline;
+  DC.AIPipelineInit = DC.AIPipeline;
 })();
