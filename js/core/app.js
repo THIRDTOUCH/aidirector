@@ -407,6 +407,11 @@
       if (DC.Exporter && DC.Exporter.exportJSON) DC.Exporter.exportJSON();
       else DC.toast('导出模块尚未加载', 'warning');
     };
+    const btnVoice = document.getElementById('btnVoice');
+    if (btnVoice) btnVoice.onclick = () => {
+      if (DC.VoiceTTS && DC.VoiceTTS.showSettings) DC.VoiceTTS.showSettings();
+      else DC.toast('配音模块尚未加载', 'warning');
+    };
 
     console.log('✅ 主应用初始化完成');
   });

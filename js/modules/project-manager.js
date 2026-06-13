@@ -17,20 +17,34 @@
   const STORAGE_KEY = 'dc_projects_v1';
 
   // ---------- 项目数据结构 ----------
-  function createEmptyProject(name) {
+  // 项目类型常量
+  const PROJECT_TYPES = [
+    { id: 'short-video', name: '🎬 短剧', description: '剧本→角色→分镜→出图，完整短剧生产流程' },
+    { id: 'explore-store', name: '🏪 探店', description: '门店环境→菜品→卖点镜头→推广文案' },
+    { id: 'explainer', name: '📢 讲解视频', description: '主题→讲解大纲→出镜场景→素材镜头' },
+    { id: 'series', name: '📺 连续剧', description: '多集连续剧情，统一角色和画风' },
+  ];
+
+  function createEmptyProject(name, projectType) {
     const now = new Date().toISOString();
     return {
       id: DC.Utils.uid('proj'),
       name: name || '新短剧项目',
+      projectType: projectType || 'short-video',
       genre: '剧情',
       duration: '3分钟短剧',
       style: '写实 / 电影感',
+      // 项目级画风锁定：统一的视觉风格应用到所有分镜
+      visualStyle: 'cinematic',   // cinematic / anime_ghibli / real_hk_retro / noir / photorealistic
+      visualPrompt: '',           // 自定义附加提示词，覆盖默认风格
       logline: '',
       outline: '',
       script: '',
       characters: [],
       scenes: [],
       shots: [],
+      // 剧集/集数（连续剧模式）
+      episodes: [],                // [{ id, name, status, shots: [] }]
       createdAt: now,
       updatedAt: now,
     };
@@ -47,9 +61,9 @@
     get(id) {
       return this.all().find((p) => p.id === id) || null;
     },
-    create(name) {
+    create(name, projectType) {
       const list = this.all();
-      const p = createEmptyProject(name);
+      const p = createEmptyProject(name, projectType);
       list.unshift(p);
       this.save(list);
       return p;
@@ -105,6 +119,8 @@
       const chars = (p.characters || []).length;
       const scenes = (p.scenes || []).length;
       const shots = (p.shots || []).length;
+      const typeInfo = PROJECT_TYPES.find((t) => t.id === p.projectType);
+      const typeLabel = typeInfo ? typeInfo.name : '🎬 短剧';
       card.innerHTML = `
         <div class="pc-actions">
           <button class="btn-icon" title="编辑">✏️</button>
@@ -112,7 +128,7 @@
         </div>
         <div class="pc-title">${DC.Utils.escapeHtml(p.name)}</div>
         <div class="pc-meta">
-          ${DC.Utils.escapeHtml(p.genre || '未分类')} · ${DC.Utils.escapeHtml(p.duration || '')} · ${DC.Utils.fmtDate(p.updatedAt)}
+          <span style="color:var(--primary);">${typeLabel}</span> · ${DC.Utils.escapeHtml(p.genre || '未分类')} · ${DC.Utils.fmtDate(p.updatedAt)}
         </div>
         <div style="font-size:12px;color:var(--text-2);line-height:1.6;min-height:40px;max-height:60px;overflow:hidden;">
           ${DC.Utils.escapeHtml(p.logline || (p.outline ? p.outline.slice(0, 120) : '尚未编写概要'))}
@@ -157,12 +173,38 @@
 
   function openNewProjectDialog() {
     const wrapper = document.createElement('div');
+    // 项目类型选择
+    const typeOptions = PROJECT_TYPES.map((t) =>
+      `<label style="display:block;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;margin-bottom:6px;">
+        <input type="radio" name="np-ptype" value="${t.id}" ${t.id === 'short-video' ? 'checked' : ''} style="margin-right:6px;" />
+        <strong>${t.name}</strong>
+        <div style="font-size:12px;color:var(--text-2);margin-top:2px;">${t.description}</div>
+       </label>`
+    ).join('');
+    // 画风预设
+    const visualOptions = [
+      { id: 'cinematic', name: '🎬 电影感（写实）', prompt: 'cinematic, film grain, 35mm, shallow depth of field, dramatic lighting' },
+      { id: 'anime_ghibli', name: '🌸 吉卜力动画风', prompt: 'studio ghibli style, anime, soft watercolor background, warm lighting' },
+      { id: 'real_hk_retro', name: '🌆 港式复古', prompt: 'hong kong retro style, neon lights, wet streets, 1980s aesthetic' },
+      { id: 'noir', name: '🕵️ 黑色电影', prompt: 'film noir, black and white, high contrast shadows, 1940s detective atmosphere' },
+      { id: 'photorealistic', name: '📷 写实摄影', prompt: 'photorealistic, 8k, ultra detailed, professional photography, natural lighting' },
+      { id: 'ink_chinese', name: '🖌️ 水墨国风', prompt: 'traditional chinese ink painting style, minimalist, soft brushstrokes, elegant' },
+      { id: 'cyberpunk', name: '🤖 赛博朋克', prompt: 'cyberpunk style, neon lights, futuristic cityscape, high tech, gritty atmosphere' },
+      { id: 'documentary', name: '🎥 纪录片', prompt: 'documentary style, handheld camera feel, natural lighting, authentic, candid' },
+    ];
+    const visualSelect = visualOptions.map((v) =>
+      `<option value="${v.id}" data-prompt="${v.prompt}">${v.name}</option>`
+    ).join('');
+
     wrapper.innerHTML = `
       <div class="form-grid">
         <label class="full">项目名称：
           <input type="text" id="np-name" placeholder="例如：霓虹夜都市" />
         </label>
-        <label>类型：
+        <label class="full">项目类型：
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">${typeOptions}</div>
+        </label>
+        <label>剧情类型：
           <select id="np-genre">
             <option>爱情</option><option>悬疑</option><option>科幻</option>
             <option>喜剧</option><option>动作</option><option>奇幻</option>
@@ -172,15 +214,11 @@
         <label>时长：
           <input type="text" id="np-duration" value="3分钟短剧" />
         </label>
-        <label>风格：
-          <select id="np-style">
-            <option>写实 / 电影感</option>
-            <option>动漫 / 二次元</option>
-            <option>赛博朋克</option>
-            <option>水墨国风</option>
-            <option>纪录片</option>
-            <option>黑暗哥特</option>
-          </select>
+        <label class="full">视觉风格（项目级画风锁定，所有分镜默认应用此风格）：
+          <select id="np-visual">${visualSelect}</select>
+        </label>
+        <label class="full">自定义风格提示词（可选，覆盖或补充上面的预设）：
+          <textarea id="np-visual-prompt" rows="2" placeholder="例如：warm sunset lighting, vibrant colors, dreamy atmosphere"></textarea>
         </label>
         <label class="full">一句话概要：
           <textarea id="np-logline" rows="2" placeholder="一句话讲清核心创意"></textarea>
@@ -193,11 +231,21 @@
       onConfirm: () => {
         const name = document.getElementById('np-name').value.trim();
         if (!name) { DC.toast('请填写项目名称', 'warning'); return false; }
-        const p = Projects.create(name);
+        const typeRadio = wrapper.querySelector('input[name="np-ptype"]:checked');
+        const projectType = typeRadio ? typeRadio.value : 'short-video';
+        const visualSel = wrapper.querySelector('#np-visual');
+        const visualStyle = visualSel.value;
+        const visualOpt = visualSel.options[visualSel.selectedIndex];
+        const visualDefaultPrompt = visualOpt.dataset.prompt || '';
+        const visualCustom = wrapper.querySelector('#np-visual-prompt').value.trim();
+
+        const p = Projects.create(name, projectType);
         Projects.update(p.id, {
           genre: document.getElementById('np-genre').value,
           duration: document.getElementById('np-duration').value,
-          style: document.getElementById('np-style').value,
+          style: visualOpt.textContent.replace(/^[^\s]+\s/, '').trim() || visualStyle,
+          visualStyle: visualStyle,
+          visualPrompt: visualCustom || visualDefaultPrompt,
           logline: document.getElementById('np-logline').value.trim(),
         });
         DC.setCurrentProjectId(p.id);
@@ -210,19 +258,42 @@
 
   function openEditDialog(p) {
     const wrapper = document.createElement('div');
+    const visualOptions = [
+      { id: 'cinematic', name: '🎬 电影感（写实）' },
+      { id: 'anime_ghibli', name: '🌸 吉卜力动画风' },
+      { id: 'real_hk_retro', name: '🌆 港式复古' },
+      { id: 'noir', name: '🕵️ 黑色电影' },
+      { id: 'photorealistic', name: '📷 写实摄影' },
+      { id: 'ink_chinese', name: '🖌️ 水墨国风' },
+      { id: 'cyberpunk', name: '🤖 赛博朋克' },
+      { id: 'documentary', name: '🎥 纪录片' },
+    ];
+    const visualSelect = visualOptions.map((v) =>
+      `<option value="${v.id}" ${(p.visualStyle || 'cinematic') === v.id ? 'selected' : ''}>${v.name}</option>`
+    ).join('');
+    const typeOptions = PROJECT_TYPES.map((t) =>
+      `<option value="${t.id}" ${(p.projectType || 'short-video') === t.id ? 'selected' : ''}>${t.name}</option>`
+    ).join('');
+
     wrapper.innerHTML = `
       <div class="form-grid">
         <label class="full">项目名称：
           <input type="text" id="ep-name" value="${DC.Utils.escapeHtml(p.name)}" />
         </label>
-        <label>类型：
+        <label>项目类型：
+          <select id="ep-ptype">${typeOptions}</select>
+        </label>
+        <label>剧情类型：
           <input type="text" id="ep-genre" value="${DC.Utils.escapeHtml(p.genre || '')}" />
         </label>
         <label>时长：
           <input type="text" id="ep-duration" value="${DC.Utils.escapeHtml(p.duration || '')}" />
         </label>
-        <label class="full">风格：
-          <input type="text" id="ep-style" value="${DC.Utils.escapeHtml(p.style || '')}" />
+        <label class="full">视觉风格：
+          <select id="ep-visual">${visualSelect}</select>
+        </label>
+        <label class="full">自定义风格提示词：
+          <textarea id="ep-visual-prompt" rows="2" placeholder="应用到所有分镜的统一风格词">${DC.Utils.escapeHtml(p.visualPrompt || '')}</textarea>
         </label>
         <label class="full">一句话概要：
           <textarea id="ep-logline" rows="2">${DC.Utils.escapeHtml(p.logline || '')}</textarea>
@@ -235,9 +306,11 @@
       onConfirm: () => {
         const updated = Projects.update(p.id, {
           name: document.getElementById('ep-name').value.trim() || p.name,
+          projectType: document.getElementById('ep-ptype').value,
           genre: document.getElementById('ep-genre').value,
           duration: document.getElementById('ep-duration').value,
-          style: document.getElementById('ep-style').value,
+          visualStyle: document.getElementById('ep-visual').value,
+          visualPrompt: document.getElementById('ep-visual-prompt').value.trim(),
           logline: document.getElementById('ep-logline').value.trim(),
         });
         DC.toast('已保存', 'success');
@@ -411,11 +484,14 @@
       this.render();
       // 如果还没有项目，创建一个示例
       if (Projects.all().length === 0) {
-        const p = Projects.create('我的第一个短剧项目');
+        const p = Projects.create('我的第一个短剧项目', 'short-video');
         Projects.update(p.id, {
+          projectType: 'short-video',
           genre: '剧情',
           duration: '3分钟短剧',
-          style: '写实 / 电影感',
+          style: '电影感（写实）',
+          visualStyle: 'cinematic',
+          visualPrompt: 'cinematic, film grain, 35mm, shallow depth of field, dramatic lighting',
           logline: '用一句话描述你的核心创意，例如：一位外卖员在雨夜遇到改变人生的陌生人...',
           outline: '## 核心主题\n\n（由 AI 或您自己编写故事核心）\n\n## 主要角色\n\n- 角色A：\n- 角色B：\n\n## 故事大纲\n\n### 第一幕：\n### 第二幕：\n### 第三幕：',
           script: '场景一：【】\n（请在此处编写剧本正文，或点击上方 AI 按钮自动生成）',
@@ -433,8 +509,8 @@
       const id = DC.getCurrentProjectId();
       return id ? Projects.get(id) : null;
     },
-    create(name) {
-      const p = Projects.create(name);
+    create(name, projectType) {
+      const p = Projects.create(name, projectType);
       DC.setCurrentProjectId(p.id);
       renderGrid();
       return p;
@@ -466,6 +542,25 @@
       if (DC.SceneManager && DC.SceneManager.render) DC.SceneManager.render();
       if (DC.Exporter && DC.Exporter.renderPreview) DC.Exporter.renderPreview();
       return result;
+    },
+    // —— 新增：项目级画风与类型管理 ——
+    getProjectTypes() { return PROJECT_TYPES.slice(); },
+    getCurrentProjectType() {
+      const p = this.getCurrent();
+      return p ? (p.projectType || 'short-video') : 'short-video';
+    },
+    getCurrentVisualStyle() {
+      const p = this.getCurrent();
+      return p ? (p.visualStyle || 'cinematic') : 'cinematic';
+    },
+    getCurrentVisualPrompt() {
+      const p = this.getCurrent();
+      return p ? (p.visualPrompt || '') : '';
+    },
+    setVisualStyle(styleId, customPrompt) {
+      const patch = { visualStyle: styleId };
+      if (customPrompt !== undefined) patch.visualPrompt = customPrompt;
+      return this.update(patch);
     },
   };
   DC.Project = DC.ProjectManager;

@@ -49,6 +49,7 @@
         <span class="dot"></span>
         <span class="status-text" id="llmStatusText">未连接</span>
       </div>
+      <button id="btnVoice" class="btn btn-ghost" title="配音/TTS">🎤</button>
       <button id="btnSettings" class="btn btn-ghost" title="AI设置">⚙️</button>
       <button id="btnExport" class="btn btn-primary" title="导出">📤 导出</button>
     </div>
@@ -423,6 +424,7 @@
   <script src="js/modules/script-parser.js"></script>
   <script src="js/modules/ffmpeg-exporter.js"></script>
   <script src="js/modules/workflow-init.js"></script>
+  <script src="js/modules/voice-tts.js"></script>
   <script>
     /* ===== 注册 Service Worker（PWA 离线缓存）===== */
     if ('serviceWorker' in navigator) {

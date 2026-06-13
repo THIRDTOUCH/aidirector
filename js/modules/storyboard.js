@@ -181,7 +181,11 @@
       cameraRig: 'tripod', depthOfField: 'medium', lightingStyle: 'natural',
       lightingDirection: 'front', colorTemperature: 'neutral', focalLength: '50mm',
       photographyTechnique: 'none', playbackSpeed: 'normal',
-      emotionTags: [], atmosphericEffects: [], effectIntensity: 'moderate'
+      emotionTags: [], atmosphericEffects: [], effectIntensity: 'moderate',
+      // 视频动作 + 配音脚本（新增字段）
+      videoPrompt: '',     // 视频动作/运镜提示词（英文）
+      movementAction: '', // 中文动作描述
+      ttsScript: '',     // 配音文字稿
     };
     // 兼容旧字段
     s.movement = s.movement || s.camera || '固定';
@@ -333,6 +337,22 @@
             <button type="button" class="btn" id="sh-btn-bible">📖 注入角色一致性</button>
           </div>
         </div>
+      </details>
+
+      <!-- ===== 视频动作 + 配音 ===== -->
+      <details class="video-params" open>
+        <summary>🎞️ 视频动作与配音</summary>
+        <div class="form-grid">
+          <label class="full">🎬 详细动作描述（中文，供视频生成参考）：
+            <textarea id="sh-movement" rows="2" placeholder="例如：角色慢慢转头看向窗外，眼神从平静变为惊讶">${DC.Utils.escapeHtml(s.movementAction || '')}</textarea>
+          </label>
+          <label class="full">🎥 视频动作提示词（英文，供 AI 视频生成模型）：
+            <textarea id="sh-videoprompt" rows="2" placeholder="slow pan left, cinematic camera movement, smooth motion, character turns head">${DC.Utils.escapeHtml(s.videoPrompt || '')}</textarea>
+          </label>
+          <label class="full">🎤 配音文字稿（可直接朗读或调用 TTS）：
+            <textarea id="sh-tts" rows="2" placeholder="这一段的台词，可以直接用于配音生成">${DC.Utils.escapeHtml(s.ttsScript || s.dialogue || '')}</textarea>
+          </label>
+        </div>
       </details>`;
 
     DC.modal.open({
@@ -380,6 +400,10 @@
           emotionTags,
           atmosphericEffects: atmEffects,
           effectIntensity: body.querySelector('#sh-intensity').value,
+          // 新增：视频动作 + 配音脚本
+          movementAction: body.querySelector('#sh-movement').value.trim(),
+          videoPrompt: body.querySelector('#sh-videoprompt').value.trim(),
+          ttsScript: body.querySelector('#sh-tts').value.trim(),
           imageUrl: s.imageUrl || '',
         };
         const arr = getShots();
@@ -434,10 +458,15 @@
           }
 
           let result = '';
+          // 从项目级画风获取统一风格提示
+          const project = window.DC.ProjectManager ? window.DC.ProjectManager.getCurrent() : null;
+          const projectVisualPrompt = project && project.visualPrompt ? project.visualPrompt : '';
           if (window.DC.PromptBuilder) {
             result = window.DC.PromptBuilder.buildShotImagePrompt(shotData, {});
+            if (projectVisualPrompt) result = projectVisualPrompt + ', ' + result;
           } else {
             const parts = [];
+            if (projectVisualPrompt) parts.push(projectVisualPrompt);
             const type = shotData.shotType, angle = shotData.angle, mov = shotData.movement;
             if (type) parts.push(type + ' shot');
             if (angle) parts.push(angle);

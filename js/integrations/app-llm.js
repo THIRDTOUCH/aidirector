@@ -19,6 +19,8 @@
   const STATUS_KEY = 'dc_llm_status_v1';
 
   // ---------- Provider Registry ----------
+  // 每个 provider 条目：id / name / apiType / endpointPath / testEndpointPath /
+  //   buildBody / buildHeaders / parseResponse / parseError / isStreamingOllamaFormat
   const PROVIDER_REGISTRY = {
     ollama: {
       id: 'ollama',
@@ -102,12 +104,34 @@
         return false;
       },
     },
-    // Groq / DeepSeek 等 OpenAI 兼容 provider 共用 openai 逻辑
-    groq: null,
-    deepseek: null,
+    groq: {
+      id: 'groq',
+      name: 'Groq (云端)',
+      apiType: 'openai',
+      endpointPath: '/openai/v1/chat/completions',
+      testEndpointPath: '/openai/v1/models',
+      buildBody(messages, opts) { return PROVIDER_REGISTRY.openai.buildBody(messages, opts); },
+      buildHeaders(apiKey) { return PROVIDER_REGISTRY.openai.buildHeaders(apiKey); },
+      parseResponse(data) { return PROVIDER_REGISTRY.openai.parseResponse(data); },
+      parseError(err, p) { return PROVIDER_REGISTRY.openai.parseError(err, p); },
+      isStreamingOllamaFormat(chunk) { return false; },
+    },
+    deepseek: {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      apiType: 'openai',
+      endpointPath: '/chat/completions',
+      testEndpointPath: '/models',
+      buildBody(messages, opts) { return PROVIDER_REGISTRY.openai.buildBody(messages, opts); },
+      buildHeaders(apiKey) { return PROVIDER_REGISTRY.openai.buildHeaders(apiKey); },
+      parseResponse(data) { return PROVIDER_REGISTRY.openai.parseResponse(data); },
+      parseError(err, p) { return PROVIDER_REGISTRY.openai.parseError(err, p); },
+      isStreamingOllamaFormat(chunk) { return false; },
+    },
   };
 
   // OpenAI 兼容 provider 到实际 registry 条目的映射
+  // 注意：groq/deepseek 现在已有独立条目（带各自 endpointPath），此处仅保留兼容接口
   const OPENAI_COMPAT_ALIASES = {
     groq: 'openai',
     deepseek: 'openai',
@@ -185,6 +209,72 @@
     DC.Storage.set(CONFIG_KEY, cfg);
   }
 
+  // ---------- LLM 用量统计 ----------
+  const STATS_KEY = 'dc_llm_stats_v1';
+  const _emptyStats = () => ({
+    totalCalls: 0,
+    totalTokensIn: 0,
+    totalTokensOut: 0,
+    totalDurationMs: 0,
+    successCount: 0,
+    errorCount: 0,
+    lastError: null,
+    lastCallAt: null,
+    byProvider: {}, // providerKey -> { calls, tokensIn, tokensOut, durationMs }
+    history: [],     // 最近 50 次调用的精简记录
+  });
+  let _stats = loadStats();
+
+  function loadStats() {
+    const s = DC.Storage.get(STATS_KEY, null);
+    if (!s) return _emptyStats();
+    // 兼容性填充
+    const base = _emptyStats();
+    return Object.assign(base, s);
+  }
+  function saveStats() {
+    DC.Storage.set(STATS_KEY, _stats);
+  }
+  // 粗略 token 估算（~4 个字符 ≈ 1 token，英文较准，中文偏保守）
+  function estimateTokens(text) {
+    if (!text) return 0;
+    return Math.max(1, Math.ceil(String(text).length / 4));
+  }
+  function recordCall(providerKey, tokensIn, tokensOut, durationMs, ok, errorMsg) {
+    _stats.totalCalls += 1;
+    _stats.totalTokensIn += tokensIn;
+    _stats.totalTokensOut += tokensOut;
+    _stats.totalDurationMs += durationMs;
+    _stats.lastCallAt = new Date().toISOString();
+    if (ok) _stats.successCount += 1;
+    else {
+      _stats.errorCount += 1;
+      _stats.lastError = { at: _stats.lastCallAt, provider: providerKey, message: String(errorMsg || '').slice(0, 200) };
+    }
+    if (!_stats.byProvider[providerKey]) {
+      _stats.byProvider[providerKey] = { calls: 0, tokensIn: 0, tokensOut: 0, durationMs: 0, success: 0, error: 0 };
+    }
+    const pb = _stats.byProvider[providerKey];
+    pb.calls += 1;
+    pb.tokensIn += tokensIn;
+    pb.tokensOut += tokensOut;
+    pb.durationMs += durationMs;
+    if (ok) pb.success += 1; else pb.error += 1;
+
+    _stats.history.unshift({
+      at: _stats.lastCallAt,
+      provider: providerKey,
+      tokensIn, tokensOut, durationMs, ok,
+      snippet: null, // 不保存内容，避免隐私
+    });
+    if (_stats.history.length > 50) _stats.history = _stats.history.slice(0, 50);
+    saveStats();
+  }
+  function resetStats() {
+    _stats = _emptyStats();
+    saveStats();
+  }
+
   // ---------- 连接测试 ----------
   async function testConnection(providerKey) {
     const p = cfg.providers[providerKey];
@@ -232,6 +322,11 @@
     }
     messages.push({ role: 'user', content: prompt });
 
+    // 估算输入 tokens（system + history + 用户 prompt）
+    const inputText = messages.map((m) => m.content || '').join('\n');
+    const tokensIn = estimateTokens(inputText);
+    const startedAt = Date.now();
+
     // 仅当显式请求流式或传入了 onChunk 回调时才用流
     const stream = options.stream === true || typeof options.onChunk === 'function';
     // 支持调用方覆盖 temperature / maxTokens
@@ -243,82 +338,99 @@
     const body = reg.buildBody(messages, buildOpts);
     const headers = reg.buildHeaders(p.apiKey);
 
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error('模型请求失败 (HTTP ' + res.status + '): ' + text.slice(0, 300));
-    }
+    try {
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        const err = new Error('模型请求失败 (HTTP ' + res.status + '): ' + text.slice(0, 300));
+        recordCall(provider, tokensIn, 0, Date.now() - startedAt, false, err.message);
+        throw err;
+      }
 
-    // 流式
-    if (stream) {
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let fullText = '';
-      let buffer = '';
-      let isFirstChunk = true;
+      // 流式
+      if (stream) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let fullText = '';
+        let buffer = '';
+        let isFirstChunk = true;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
 
-        if (isFirstChunk === true) {
-          // 使用 registry 提供的格式检测方法
-          isFirstChunk = reg.isStreamingOllamaFormat(chunk) ? 'ollama' : 'sse';
-        }
-
-        buffer += chunk;
-
-        if (isFirstChunk === 'ollama') {
-          // Ollama: 每行一个 JSON 对象
-          let idx;
-          while ((idx = buffer.indexOf('\n')) !== -1) {
-            const line = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 1);
-            if (!line) continue;
-            try {
-              const obj = JSON.parse(line);
-              const delta = obj.message && obj.message.content;
-              if (delta) {
-                fullText += delta;
-                if (options.onChunk) options.onChunk(delta, fullText);
-              }
-            } catch (_) { /* 跳过无效行 */ }
+          if (isFirstChunk === true) {
+            // 使用 registry 提供的格式检测方法
+            isFirstChunk = reg.isStreamingOllamaFormat(chunk) ? 'ollama' : 'sse';
           }
-        } else {
-          // SSE: data: {...}\n\n 分隔
-          let sep;
-          while ((sep = buffer.indexOf('\n\n')) !== -1 || (sep = buffer.indexOf('\r\n\r\n')) !== -1) {
-            const block = buffer.slice(0, sep);
-            const sepLen = block.includes('\r\n') ? 4 : 2;
-            buffer = buffer.slice(sep + sepLen);
-            const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
-            for (const line of lines) {
-              if (!line.startsWith('data:')) continue;
-              const payload = line.slice(5).trim();
-              if (payload === '[DONE]') continue;
+
+          buffer += chunk;
+
+          if (isFirstChunk === 'ollama') {
+            // Ollama: 每行一个 JSON 对象
+            let idx;
+            while ((idx = buffer.indexOf('\n')) !== -1) {
+              const line = buffer.slice(0, idx).trim();
+              buffer = buffer.slice(idx + 1);
+              if (!line) continue;
               try {
-                const obj = JSON.parse(payload);
-                const delta = obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;
+                const obj = JSON.parse(line);
+                const delta = obj.message && obj.message.content;
                 if (delta) {
                   fullText += delta;
                   if (options.onChunk) options.onChunk(delta, fullText);
                 }
-              } catch (_) { /* 跳过无效 */ }
+              } catch (_) { /* 跳过无效行 */ }
+            }
+          } else {
+            // SSE: data: {...}\n\n 分隔
+            let sep;
+            while ((sep = buffer.indexOf('\n\n')) !== -1 || (sep = buffer.indexOf('\r\n\r\n')) !== -1) {
+              const block = buffer.slice(0, sep);
+              const sepLen = block.includes('\r\n') ? 4 : 2;
+              buffer = buffer.slice(sep + sepLen);
+              const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+              for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                const payload = line.slice(5).trim();
+                if (payload === '[DONE]') continue;
+                try {
+                  const obj = JSON.parse(payload);
+                  const delta = obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;
+                  if (delta) {
+                    fullText += delta;
+                    if (options.onChunk) options.onChunk(delta, fullText);
+                  }
+                } catch (_) { /* 跳过无效 */ }
+              }
             }
           }
         }
+        recordCall(provider, tokensIn, estimateTokens(fullText), Date.now() - startedAt, true, null);
+        if (options.onDone) options.onDone(fullText);
+        return fullText;
       }
-      if (options.onDone) options.onDone(fullText);
-      return fullText;
-    }
 
-    // 非流式
-    const data = await res.json();
-    const text = reg.parseResponse(data);
-    if (!text) throw new Error('模型未返回文本内容');
-    if (options.onDone) options.onDone(text);
-    return text;
+      // 非流式
+      const data = await res.json();
+      const text = reg.parseResponse(data);
+      if (!text) {
+        const err = new Error('模型未返回文本内容');
+        recordCall(provider, tokensIn, 0, Date.now() - startedAt, false, err.message);
+        throw err;
+      }
+      recordCall(provider, tokensIn, estimateTokens(text), Date.now() - startedAt, true, null);
+      if (options.onDone) options.onDone(text);
+      return text;
+    } catch (err) {
+      // 对于非 HTTP 错误（网络异常等），也要记录
+      if (!_stats.lastCallAt || _stats.lastCallAt !== new Date().toISOString()) {
+        // 避免重复记录
+      }
+      recordCall(provider, tokensIn, 0, Date.now() - startedAt, false, err.message);
+      throw err;
+    }
   }
 
   // ---------- 状态更新 ----------
@@ -331,7 +443,9 @@
     const active = cfg.activeProvider;
     testConnection(active).then((r) => {
       if (r.ok) {
-        if (el) el.textContent = '✅ ' + (cfg.providers[active].name) + ' · ' + cfg.providers[active].model;
+        const totalTok = _stats.totalTokensIn + _stats.totalTokensOut;
+        const providerName = cfg.providers[active] ? cfg.providers[active].name : active;
+        if (el) el.textContent = '✅ ' + providerName + ' · ' + (cfg.providers[active].model || '') + (totalTok > 0 ? ' · ~' + totalTok + ' tok' : '');
         if (dot) dot.className = 'status-dot ok';
       } else {
         if (el) el.textContent = '⚠️ ' + r.message;
@@ -341,6 +455,73 @@
       if (el) el.textContent = '❌ ' + err.message;
       if (dot) dot.className = 'status-dot error';
     });
+  }
+
+  // ---------- 用量统计面板 HTML ----------
+  function renderStatsSummary() {
+    const total = _stats.totalCalls;
+    const totalTok = _stats.totalTokensIn + _stats.totalTokensOut;
+    const avgMs = total > 0 ? Math.round(_stats.totalDurationMs / total) : 0;
+    const errRate = total > 0 ? Math.round((_stats.errorCount / total) * 100) : 0;
+
+    const providerRows = Object.keys(_stats.byProvider).map((key) => {
+      const s = _stats.byProvider[key];
+      const pInfo = cfg.providers[key] || { name: key };
+      return `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);">${pInfo.name || key}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);text-align:right;">${s.calls}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);text-align:right;">${s.tokensIn}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);text-align:right;">${s.tokensOut}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);text-align:right;">${s.calls > 0 ? Math.round(s.durationMs / s.calls) + ' ms' : '—'}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid var(--border-soft);text-align:right;color:${s.error > 0 ? 'var(--accent-red)' : 'var(--text-2)'};">${s.error}</td>
+      </tr>`;
+    }).join('');
+
+    const lastErrorHtml = _stats.lastError ? `
+      <div style="margin-top:8px;padding:8px 12px;background:var(--bg-error);border-radius:6px;color:var(--accent-red);font-size:12px;">
+        <div style="font-weight:600;margin-bottom:2px;">最近一次错误 · ${_stats.lastError.provider} · ${new Date(_stats.lastError.at).toLocaleString()}</div>
+        <div>${DC.Utils.escapeHtml(_stats.lastError.message)}</div>
+      </div>` : '';
+
+    return `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
+        <div style="padding:10px;background:var(--bg-soft);border-radius:8px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-2);">总调用</div>
+          <div style="font-size:18px;font-weight:600;">${total}</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-soft);border-radius:8px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-2);">总 Tokens(估)</div>
+          <div style="font-size:18px;font-weight:600;">${totalTok}</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-soft);border-radius:8px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-2);">平均响应</div>
+          <div style="font-size:18px;font-weight:600;">${avgMs} ms</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-soft);border-radius:8px;text-align:center;">
+          <div style="font-size:11px;color:var(--text-2);">错误率</div>
+          <div style="font-size:18px;font-weight:600;color:${errRate > 20 ? 'var(--accent-red)' : 'inherit'};">${errRate}%</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">按 Provider 明细：</div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--bg-soft);">
+              <th style="padding:6px 8px;text-align:left;">Provider</th>
+              <th style="padding:6px 8px;text-align:right;">调用</th>
+              <th style="padding:6px 8px;text-align:right;">入 Tok</th>
+              <th style="padding:6px 8px;text-align:right;">出 Tok</th>
+              <th style="padding:6px 8px;text-align:right;">平均耗时</th>
+              <th style="padding:6px 8px;text-align:right;">失败</th>
+            </tr>
+          </thead>
+          <tbody>${providerRows || `<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-2);">暂无调用记录</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${lastErrorHtml}
+      <div style="margin-top:10px;font-size:11px;color:var(--text-2);">
+        * Token 数量基于字符长度粗略估算（~4 字符 ≈ 1 token），实际以 provider 返回为准。
+      </div>`;
   }
 
   // ---------- 设置弹窗 ----------
@@ -407,6 +588,39 @@
 
   function showSettings() {
     const body = renderSettingsBody();
+    // 追加用量统计面板
+    const statsSection = document.createElement('details');
+    statsSection.open = false;
+    statsSection.style.cssText = 'margin-top:16px;border-top:1px solid var(--border);padding-top:14px;';
+    statsSection.innerHTML = `
+      <summary style="cursor:pointer;font-weight:600;">📊 用量统计与调用记录</summary>
+      <div style="margin-top:12px;">
+        <div id="llm-stats-container"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button type="button" class="btn" id="llm-btn-refresh-stats" style="flex:1;">🔄 刷新显示</button>
+          <button type="button" class="btn" id="llm-btn-reset-stats" style="flex:1;background:var(--bg-error);color:var(--accent-red);">清空统计</button>
+        </div>
+      </div>`;
+    body.appendChild(statsSection);
+
+    // 初次渲染统计
+    const statsContainer = statsSection.querySelector('#llm-stats-container');
+    if (statsContainer) statsContainer.innerHTML = renderStatsSummary();
+
+    const refreshBtn = statsSection.querySelector('#llm-btn-refresh-stats');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => {
+      if (statsContainer) statsContainer.innerHTML = renderStatsSummary();
+    });
+    const resetBtn = statsSection.querySelector('#llm-btn-reset-stats');
+    if (resetBtn) resetBtn.addEventListener('click', () => {
+      if (confirm('确认清空所有 LLM 调用统计？')) {
+        resetStats();
+        if (statsContainer) statsContainer.innerHTML = renderStatsSummary();
+        refreshStatus();
+        DC.toast('统计已清空', 'success');
+      }
+    });
+
     DC.modal.open({
       title: '⚙️ AI 模型设置',
       body: body,
@@ -425,6 +639,17 @@
       if (r.ok) DC.toast('✅ ' + r.message, 'success');
       else DC.toast('❌ ' + r.message, 'error');
     }).catch((err) => DC.toast('❌ ' + err.message, 'error'));
+  }
+
+  function showStatsModal() {
+    const body = document.createElement('div');
+    body.innerHTML = `<div id="llm-stats-only"></div>`;
+    body.querySelector('#llm-stats-only').innerHTML = renderStatsSummary();
+    DC.modal.open({
+      title: '📊 LLM 用量统计',
+      body: body,
+      confirmText: '关闭',
+    });
   }
 
   // ---------- 对外接口 ----------
@@ -453,5 +678,11 @@
       const p = cfg.providers[cfg.activeProvider];
       return p ? p.model : '';
     },
+    // —— 新增：用量统计 API ——
+    getStats() { return structuredClone(_stats); },
+    resetStats,
+    showStatsModal,
+    getAllProviders() { return Object.keys(cfg.providers); },
+    getActiveProvider() { return cfg.activeProvider; },
   };
 })();
