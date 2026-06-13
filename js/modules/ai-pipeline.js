@@ -48,6 +48,140 @@
     }
   }
 
+  // —— PipelineGraph 图式工作流引擎 ——
+  class PipelineGraph {
+    constructor() {
+      this._nodes = [];
+      this._edges = [];
+      this._results = {};
+      this._eventHandlers = {};
+    }
+
+    on(event, handler) {
+      if (!this._eventHandlers[event]) this._eventHandlers[event] = [];
+      this._eventHandlers[event].push(handler);
+    }
+
+    _emit(event, data) {
+      const handlers = this._eventHandlers[event] || [];
+      handlers.forEach(h => h(data));
+    }
+
+    addNode(id, label, fn, options = {}) {
+      this._nodes.push({
+        id,
+        label,
+        fn,
+        parallel: options.parallel || false,
+        retry: options.retry || 0,
+        condition: options.condition || null,
+        inputs: options.inputs || [],
+        outputs: options.outputs || [],
+        humanApproval: options.humanApproval || false,
+      });
+    }
+
+    addEdge(from, to) {
+      this._edges.push({ from, to });
+    }
+
+    async execute(ctx = {}) {
+      if (!DC.LLM) throw new Error('AI 模块 (DC.LLM) 未加载');
+      if (!DC.ProjectManager) throw new Error('项目管理模块 (DC.ProjectManager) 未加载');
+
+      const nodeMap = new Map(this._nodes.map(n => [n.id, n]));
+      const inDegree = new Map();
+      const adjList = new Map();
+
+      this._nodes.forEach(n => {
+        inDegree.set(n.id, 0);
+        adjList.set(n.id, []);
+      });
+
+      this._edges.forEach(edge => {
+        const { from, to } = edge;
+        if (nodeMap.has(from) && nodeMap.has(to)) {
+          adjList.get(from).push(to);
+          inDegree.set(to, (inDegree.get(to) || 0) + 1);
+        }
+      });
+
+      // 拓扑序：Kahn 算法 + 并行层分组
+      const startNodes = [...inDegree.entries()].filter(([_, d]) => d === 0).map(([id]) => id);
+      const queue = startNodes.map(id => nodeMap.get(id));
+      const executed = new Set();
+
+      while (queue.length > 0) {
+        const batch = [];
+        while (queue.length > 0) {
+          const node = queue.shift();
+          if (!node || executed.has(node.id)) continue;
+          if (node.condition && !node.condition(ctx, this._results)) {
+            executed.add(node.id);
+            continue;
+          }
+          batch.push(node);
+        }
+
+        if (batch.length === 0) break;
+
+        // 并行执行同层节点
+        const promises = batch.map(async (node) => {
+          if (node.humanApproval) {
+            const approved = await this._requestApproval(node.id, node.label);
+            if (!approved) {
+              this._emit('humanSkip', { nodeId: node.id, label: node.label });
+              executed.add(node.id);
+              return null;
+            }
+          }
+
+          for (let attempt = 0; attempt <= node.retry; attempt++) {
+            try {
+              const result = await node.fn(ctx, this._results);
+              this._results[node.id] = result;
+              this._emit('nodeComplete', { nodeId: node.id, label: node.label, result });
+              return result;
+            } catch (err) {
+              if (attempt < node.retry) {
+                this._emit('nodeRetry', { nodeId: node.id, label: node.label, attempt: attempt + 1 });
+              } else {
+                this._emit('nodeError', { nodeId: node.id, label: node.label, error: err });
+                throw err;
+              }
+            }
+          }
+        });
+
+        await Promise.all(promises);
+        batch.forEach(n => executed.add(n.id));
+
+        // 将后继入度为0的节点加入队列
+        batch.forEach(node => {
+          const successors = adjList.get(node.id) || [];
+          successors.forEach(succId => {
+            inDegree.set(succId, inDegree.get(succId) - 1);
+            if (inDegree.get(succId) === 0) {
+              queue.push(nodeMap.get(succId));
+            }
+          });
+        });
+      }
+    }
+
+    async _requestApproval(nodeId, label) {
+      return new Promise((resolve) => {
+        const msg = `是否继续「${label}」阶段？`;
+        this._emit('humanApproval', { nodeId, label, message: msg, resolve });
+        // 5秒超时自动放行
+        setTimeout(() => {
+          this._emit('humanTimeout', { nodeId, label });
+          resolve(true);
+        }, 5000);
+      });
+    }
+  }
+
   async function ideaAgent() {
     const input = document.getElementById('ideaInput');
     const idea = input ? input.value.trim() : '';
@@ -181,128 +315,180 @@
     log('info', `🚀 ====== 启动全流程（项目：${p.name}）======`);
     log('info', `起始创意：${idea.slice(0, 50)}`);
 
-    try {
-      // Step 1: 大纲
-      log('info', `[1/6] 💡 创意总监 → 生成故事大纲`);
-      try {
-        const outline = await DC.LLM.generate(
-          `基于以下创意生成短剧大纲（Markdown，中文）：\n\n创意：${idea}\n项目：${p.name}\n类型：${p.genre || '剧情'}\n\n请输出：核心主题 + 主要角色 + 三幕式大纲`
+    const pipeline = new PipelineGraph();
+
+    // 监听 PipelineGraph 事件
+    pipeline.on('nodeComplete', ({ nodeId, label, result }) => {
+      log('success', `✅ [${label}] 执行成功`);
+    });
+
+    pipeline.on('nodeError', ({ nodeId, label, error }) => {
+      log('error', `❌ [${label}] 执行失败：${error.message}`);
+    });
+
+    pipeline.on('nodeRetry', ({ nodeId, label, attempt }) => {
+      log('warn', `⚠️ [${label}] 执行失败，将进行第 ${attempt} 次重试...`);
+    });
+
+    pipeline.on('humanSkip', ({ nodeId, label }) => {
+      log('warn', `⏭️ [${label}] 已由用户跳过`);
+    });
+
+    // Step 1: 生成大纲
+    pipeline.addNode('step1', '💡 创意总监 → 生成故事大纲', async (ctx, results) => {
+      const outline = await DC.LLM.generate(
+        `基于以下创意生成短剧大纲（Markdown，中文）：\n\n创意：${idea}\n项目：${p.name}\n类型：${p.genre || '剧情'}\n\n请输出：核心主题 + 主要角色 + 三幕式大纲`
+      );
+      DC.ProjectManager.update({ logline: idea, outline });
+      return { outline, length: outline.length };
+    }, { retry: 2 });
+
+    // Step 2: 编写剧本
+    pipeline.addNode('step2', '✍️ 编剧 → 基于大纲写剧本', async (ctx, results) => {
+      const pp = DC.ProjectManager.getCurrent();
+      const script = await DC.LLM.generate(
+        `基于以下大纲编写完整短剧剧本（中文，场景+对话格式）：\n\n项目：${pp.name}\n大纲：\n${pp.outline}`
+      );
+      DC.ProjectManager.update({ script });
+      return { script, length: script.length };
+    }, { retry: 2 });
+
+    // 审批节点：剧本确认
+    pipeline.addNode('approval1', '✅ 剧本确认（可跳过）', async (ctx, results) => {
+      log('info', '⏸️ 剧本已生成，可前往编辑后再继续');
+      return true;
+    }, { humanApproval: true });
+
+    // Step 3: 生成角色
+    pipeline.addNode('step3', '👤 角色设计师 → 生成角色', async (ctx, results) => {
+      const pp = DC.ProjectManager.getCurrent();
+      const ctxt = await DC.LLM.generate(
+        `基于以下项目生成3-5个角色，严格返回 JSON 数组（字段：name, role, appearance, personality, prompt），不要包裹在解释文字中：\n项目：${pp.name}\n大纲：\n${pp.outline}`
+      );
+      const chars = parseJSON(ctxt) || [];
+      if (chars.length) {
+        DC.ProjectManager.updateCharacters(
+          chars.map((c) => ({
+            id: DC.Utils.uid('char'),
+            name: String(c.name || ''), role: String(c.role || ''), appearance: String(c.appearance || ''),
+            personality: String(c.personality || ''), prompt: String(c.prompt || ''),
+          }))
         );
-        DC.ProjectManager.update({ logline: idea, outline });
-        log('success', `[1/6] ✅ 大纲已生成（${outline.length} 字）`);
-      } catch (e) { log('error', `[1/6] ❌ ${e.message}`); return; }
+        return { chars: chars.length };
+      } else {
+        log('warn', `⚠️ AI 返回无法解析为角色 JSON，建议手动添加角色`);
+        if (DC.Log && ctxt) DC.Log.info('  ↪ AI 原文前200字：' + ctxt.slice(0, 200).replace(/\n/g, ' '));
+        return { chars: 0 };
+      }
+    }, { retry: 2 });
 
-      // Step 2: 剧本
-      log('info', `[2/6] ✍️ 编剧 → 基于大纲写剧本`);
-      try {
-        const pp = DC.ProjectManager.getCurrent();
-        const script = await DC.LLM.generate(
-          `基于以下大纲编写完整短剧剧本（中文，场景+对话格式）：\n\n项目：${pp.name}\n大纲：\n${pp.outline}`
+    // Step 4: 生成场景
+    pipeline.addNode('step4', '🏞️ 美术指导 → 生成场景库', async (ctx, results) => {
+      const pp = DC.ProjectManager.getCurrent();
+      const stxt = await DC.LLM.generate(
+        `基于以下剧本生成3-6个场景，严格返回 JSON 数组（字段：name, time, location, weather, description, prompt），不要包裹在解释文字中：\n剧本：\n${(pp.script || '').slice(0, 1500)}`
+      );
+      const scenes = parseJSON(stxt) || [];
+      if (scenes.length) {
+        DC.ProjectManager.updateScenes(
+          scenes.map((s) => ({
+            id: DC.Utils.uid('scene'),
+            name: String(s.name || ''), time: String(s.time || '日'), location: String(s.location || '外'),
+            weather: String(s.weather || ''), ambiance: String(s.ambiance || ''),
+            description: String(s.description || ''), prompt: String(s.prompt || ''),
+          }))
         );
-        DC.ProjectManager.update({ script });
-        log('success', `[2/6] ✅ 剧本已生成（${script.length} 字）`);
-      } catch (e) { log('error', `[2/6] ❌ ${e.message}`); return; }
+        return { scenes: scenes.length };
+      } else {
+        log('warn', `⚠️ AI 返回无法解析为场景 JSON，建议手动添加场景`);
+        if (DC.Log && stxt) DC.Log.info('  ↪ AI 原文前200字：' + stxt.slice(0, 200).replace(/\n/g, ' '));
+        return { scenes: 0 };
+      }
+    }, { retry: 2 });
 
-      // Step 3: 角色
-      log('info', `[3/6] 👤 角色设计师 → 生成角色`);
-      try {
-        const pp = DC.ProjectManager.getCurrent();
-        const ctxt = await DC.LLM.generate(
-          `基于以下项目生成3-5个角色，严格返回 JSON 数组（字段：name, role, appearance, personality, prompt），不要包裹在解释文字中：\n项目：${pp.name}\n大纲：\n${pp.outline}`
+    // 审批节点：场景确认
+    pipeline.addNode('approval2', '✅ 场景确认（可跳过）', async (ctx, results) => {
+      log('info', '⏸️ 场景已生成，可前往编辑后再继续');
+      return true;
+    }, { humanApproval: true });
+
+    // Step 5: 分镜
+    pipeline.addNode('step5', '🎬 分镜师 → 拆解剧本为分镜', async (ctx, results) => {
+      const pp = DC.ProjectManager.getCurrent();
+      const stxt2 = await DC.LLM.generate(
+        `将以下剧本拆分为分镜 JSON 数组（字段：sceneName, shotType, camera, duration, description, dialogue, prompt），严格返回 JSON，不要包裹在解释文字中：\n\n项目：${pp.name}\n剧本：\n${pp.script}`
+      );
+      const shots = parseJSON(stxt2) || [];
+      if (shots.length) {
+        DC.ProjectManager.updateShots(
+          shots.map((s) => ({
+            id: DC.Utils.uid('shot'),
+            sceneName: String(s.sceneName || ''), shotType: String(s.shotType || '中景'),
+            camera: String(s.camera || '固定镜头'), duration: parseInt(s.duration) || 5,
+            description: String(s.description || ''), dialogue: String(s.dialogue || ''),
+            prompt: String(s.prompt || ''), imageUrl: '',
+          }))
         );
-        const chars = parseJSON(ctxt) || [];
-        if (chars.length) {
-          DC.ProjectManager.updateCharacters(
-            chars.map((c) => ({
-              id: DC.Utils.uid('char'),
-              name: String(c.name || ''), role: String(c.role || ''), appearance: String(c.appearance || ''),
-              personality: String(c.personality || ''), prompt: String(c.prompt || ''),
-            }))
-          );
-          log('success', `[3/6] ✅ ${chars.length} 个角色已生成`);
-        } else {
-          log('warn', `[3/6] ⚠️ AI 返回（${ctxt ? ctxt.length : 0} 字）无法解析为角色 JSON，建议手动添加角色`);
-          if (DC.Log && ctxt) DC.Log.info('  ↪ AI 原文前200字：' + ctxt.slice(0, 200).replace(/\n/g, ' '));
-        }
-      } catch (e) { log('error', `[3/6] ❌ ${e.message}`); }
+        return { shots: shots.length };
+      } else {
+        log('warn', `⚠️ AI 返回无法解析为分镜 JSON，建议手动添加分镜`);
+        if (DC.Log && stxt2) DC.Log.info('  ↪ AI 原文前200字：' + stxt2.slice(0, 200).replace(/\n/g, ' '));
+        return { shots: 0 };
+      }
+    }, { retry: 2 });
 
-      // Step 4: 场景
-      log('info', `[4/6] 🏞️ 美术指导 → 生成场景库`);
-      try {
-        const pp = DC.ProjectManager.getCurrent();
-        const stxt = await DC.LLM.generate(
-          `基于以下剧本生成3-6个场景，严格返回 JSON 数组（字段：name, time, location, weather, description, prompt），不要包裹在解释文字中：\n剧本：\n${(pp.script || '').slice(0, 1500)}`
+    // 审批节点：分镜确认
+    pipeline.addNode('approval3', '✅ 分镜确认（可跳过）', async (ctx, results) => {
+      log('info', '⏸️ 分镜已生成，可前往编辑后再继续');
+      return true;
+    }, { humanApproval: true });
+
+    // Step 6: 绘图提示词
+    pipeline.addNode('step6', '🖼️ 视觉生成 → 为分镜生成英文绘图提示词', async (ctx, results) => {
+      const pp = DC.ProjectManager.getCurrent();
+      const shots = (pp.shots || []).slice();
+      let updated = 0;
+      for (let i = 0; i < shots.length; i++) {
+        if (shots[i].prompt && shots[i].prompt.length > 10) continue;
+        const ptxt = await DC.LLM.generate(
+          `将以下画面描述翻译成英文 AI 绘图提示词（comma-separated）：\n\n画面：${shots[i].description || shots[i].sceneName}\n景别：${shots[i].shotType}\n运镜：${shots[i].camera}\n\n仅返回英文提示词。`
         );
-        const scenes = parseJSON(stxt) || [];
-        if (scenes.length) {
-          DC.ProjectManager.updateScenes(
-            scenes.map((s) => ({
-              id: DC.Utils.uid('scene'),
-              name: String(s.name || ''), time: String(s.time || '日'), location: String(s.location || '外'),
-              weather: String(s.weather || ''), ambiance: String(s.ambiance || ''),
-              description: String(s.description || ''), prompt: String(s.prompt || ''),
-            }))
-          );
-          log('success', `[4/6] ✅ ${scenes.length} 个场景已生成`);
-        } else {
-          log('warn', `[4/6] ⚠️ AI 返回（${stxt ? stxt.length : 0} 字）无法解析为场景 JSON，建议手动添加场景`);
-          if (DC.Log && stxt) DC.Log.info('  ↪ AI 原文前200字：' + stxt.slice(0, 200).replace(/\n/g, ' '));
-        }
-      } catch (e) { log('error', `[4/6] ❌ ${e.message}`); }
+        shots[i].prompt = ptxt.trim().slice(0, 500);
+        updated++;
+        if (updated % 3 === 0) log('info', `... 已完成 ${updated}/${shots.length}`);
+      }
+      DC.ProjectManager.updateShots(shots);
+      return { updated, total: shots.length };
+    }, { retry: 2 });
 
-      // Step 5: 分镜
-      log('info', `[5/6] 🎬 分镜师 → 拆解剧本为分镜`);
-      try {
-        const pp = DC.ProjectManager.getCurrent();
-        const stxt2 = await DC.LLM.generate(
-          `将以下剧本拆分为分镜 JSON 数组（字段：sceneName, shotType, camera, duration, description, dialogue, prompt），严格返回 JSON，不要包裹在解释文字中：\n\n项目：${pp.name}\n剧本：\n${pp.script}`
-        );
-        const shots = parseJSON(stxt2) || [];
-        if (shots.length) {
-          DC.ProjectManager.updateShots(
-            shots.map((s) => ({
-              id: DC.Utils.uid('shot'),
-              sceneName: String(s.sceneName || ''), shotType: String(s.shotType || '中景'),
-              camera: String(s.camera || '固定镜头'), duration: parseInt(s.duration) || 5,
-              description: String(s.description || ''), dialogue: String(s.dialogue || ''),
-              prompt: String(s.prompt || ''), imageUrl: '',
-            }))
-          );
-          log('success', `[5/6] ✅ ${shots.length} 个分镜已生成`);
-        } else {
-          log('warn', `[5/6] ⚠️ AI 返回（${stxt2 ? stxt2.length : 0} 字）无法解析为分镜 JSON，建议手动添加分镜`);
-          if (DC.Log && stxt2) DC.Log.info('  ↪ AI 原文前200字：' + stxt2.slice(0, 200).replace(/\n/g, ' '));
-        }
-      } catch (e) { log('error', `[5/6] ❌ ${e.message}`); }
-
-      // Step 6: 绘图提示词（批量）
-      log('info', `[6/6] 🖼️ 视觉生成 → 为分镜生成英文绘图提示词`);
-      try {
-        const pp = DC.ProjectManager.getCurrent();
-        const shots = (pp.shots || []).slice();
-        let updated = 0;
-        for (let i = 0; i < shots.length; i++) {
-          if (shots[i].prompt && shots[i].prompt.length > 10) continue;
-          const ptxt = await DC.LLM.generate(
-            `将以下画面描述翻译成英文 AI 绘图提示词（comma-separated）：\n\n画面：${shots[i].description || shots[i].sceneName}\n景别：${shots[i].shotType}\n运镜：${shots[i].camera}\n\n仅返回英文提示词。`
-          );
-          shots[i].prompt = ptxt.trim().slice(0, 500);
-          updated++;
-          if (updated % 3 === 0) log('info', `[6/6] ... 已完成 ${updated}/${shots.length}`);
-        }
-        DC.ProjectManager.updateShots(shots);
-        log('success', `[6/6] ✅ 已为 ${updated} 个分镜补充绘图提示词`);
-      } catch (e) { log('error', `[6/6] ❌ ${e.message}`); }
-
-      // 刷新所有相关页面
+    // 完成节点：刷新并通知
+    pipeline.addNode('final', '🎉 全流程完成', async (ctx, results) => {
       if (DC.Storyboard && DC.Storyboard.render) DC.Storyboard.render();
       if (DC.CharacterManager && DC.CharacterManager.render) DC.CharacterManager.render();
       if (DC.SceneManager && DC.SceneManager.render) DC.SceneManager.render();
       if (DC.Timeline && DC.Timeline.render) DC.Timeline.render();
       if (DC.Exporter && DC.Exporter.renderPreview) DC.Exporter.renderPreview();
-
       log('success', `🎉 ====== 全流程完成！请前往「预览 / 导出」页查看成果 ======`);
       DC.toast('全流程完成！', 'success');
+      return true;
+    }, { retry: 0 });
+
+    // 添加边（执行顺序）
+    pipeline.addEdge('step1', 'step2');
+    pipeline.addEdge('step2', 'approval1');
+    pipeline.addEdge('approval1', 'step3');
+    pipeline.addEdge('step3', 'step4');
+    pipeline.addEdge('step4', 'approval2');
+    pipeline.addEdge('approval2', 'step5');
+    pipeline.addEdge('step5', 'approval3');
+    pipeline.addEdge('approval3', 'step6');
+    pipeline.addEdge('step6', 'final');
+
+    try {
+      await pipeline.execute({ idea, project: p });
+    } catch (err) {
+      log('error', `❌ 全流程异常中断：${err.message}`);
+      DC.toast('全流程异常：' + err.message, 'error');
     } finally {
       lockButtons(false);
     }

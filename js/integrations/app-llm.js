@@ -18,6 +18,112 @@
   const CONFIG_KEY = 'dc_llm_config_v1';
   const STATUS_KEY = 'dc_llm_status_v1';
 
+  // ---------- Provider Registry ----------
+  const PROVIDER_REGISTRY = {
+    ollama: {
+      id: 'ollama',
+      name: 'Ollama (本地)',
+      apiType: 'ollama',
+      endpointPath: '/api/chat',
+      testEndpointPath: '/api/tags',
+      buildBody(messages, opts) {
+        return {
+          model: opts.model,
+          messages: messages,
+          stream: opts.stream,
+          options: {
+            temperature: opts.temperature,
+            num_predict: opts.maxTokens,
+          },
+        };
+      },
+      buildHeaders() {
+        return { 'Content-Type': 'application/json' };
+      },
+      parseResponse(data) {
+        return (
+          (data.message && data.message.content) ||
+          (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ||
+          data.response ||
+          ''
+        );
+      },
+      parseError(err, p) {
+        const msg = err.message || String(err);
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+          return { ok: false, message: '无法连接 Ollama，请确保服务已启动 (ollama serve) 并配置 CORS (OLLAMA_ORIGINS=*)' };
+        }
+        return { ok: false, message: '连接失败：' + msg };
+      },
+      isStreamingOllamaFormat(chunk) {
+        return !chunk.startsWith('data:');
+      },
+    },
+    openai: {
+      id: 'openai',
+      name: 'OpenAI 兼容',
+      apiType: 'openai',
+      endpointPath: '/v1/chat/completions',
+      testEndpointPath: '/v1/models',
+      buildBody(messages, opts) {
+        return {
+          model: opts.model,
+          messages: messages,
+          stream: opts.stream,
+          temperature: opts.temperature,
+          max_tokens: opts.maxTokens,
+        };
+      },
+      buildHeaders(apiKey) {
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (apiKey || ''),
+        };
+      },
+      parseResponse(data) {
+        return (
+          (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ||
+          (data.message && data.message.content) ||
+          data.response ||
+          ''
+        );
+      },
+      parseError(err, p) {
+        const msg = err.message || String(err);
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+          return { ok: false, message: '网络错误：无法连接 ' + p.endpoint };
+        }
+        if (msg.includes('401')) {
+          return { ok: false, message: 'API Key 无效或未填写' };
+        }
+        return { ok: false, message: '连接失败：' + msg };
+      },
+      isStreamingOllamaFormat(chunk) {
+        return false;
+      },
+    },
+    // Groq / DeepSeek 等 OpenAI 兼容 provider 共用 openai 逻辑
+    groq: null,
+    deepseek: null,
+  };
+
+  // OpenAI 兼容 provider 到实际 registry 条目的映射
+  const OPENAI_COMPAT_ALIASES = {
+    groq: 'openai',
+    deepseek: 'openai',
+  };
+
+  function getRegistryEntry(providerKey) {
+    if (PROVIDER_REGISTRY[providerKey] !== null) {
+      return PROVIDER_REGISTRY[providerKey];
+    }
+    const alias = OPENAI_COMPAT_ALIASES[providerKey];
+    if (alias && PROVIDER_REGISTRY[alias]) {
+      return PROVIDER_REGISTRY[alias];
+    }
+    return null;
+  }
+
   // ---------- 默认配置 ----------
   const DEFAULT_CFG = {
     activeProvider: 'ollama',
@@ -84,18 +190,13 @@
     const p = cfg.providers[providerKey];
     if (!p || !p.enabled) return { ok: false, message: '未启用' };
 
+    const reg = getRegistryEntry(providerKey);
+    if (!reg) return { ok: false, message: '未知的 Provider：' + providerKey };
+
     try {
-      let url, headers, body, method = 'GET';
-      if (providerKey === 'ollama') {
-        url = p.endpoint.replace(/\/$/, '') + '/api/tags';
-        headers = { 'Content-Type': 'application/json' };
-      } else {
-        url = p.endpoint.replace(/\/$/, '') + '/v1/models';
-        headers = {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (p.apiKey || ''),
-        };
-      }
+      const url = p.endpoint.replace(/\/$/, '') + reg.testEndpointPath;
+      const headers = reg.buildHeaders(p.apiKey);
+      const method = 'GET';
 
       const res = await fetch(url, { method, headers });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -107,18 +208,8 @@
       }
       return { ok: true, message: providerKey + ' 已连接', data: data };
     } catch (err) {
-      // 区分：CORS / 网络拒绝 / API Key 问题
-      const msg = err.message || String(err);
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        if (providerKey === 'ollama') {
-          return { ok: false, message: '无法连接 Ollama，请确保服务已启动 (ollama serve) 并配置 CORS (OLLAMA_ORIGINS=*)' };
-        }
-        return { ok: false, message: '网络错误：无法连接 ' + p.endpoint };
-      }
-      if (msg.includes('401')) {
-        return { ok: false, message: 'API Key 无效或未填写' };
-      }
-      return { ok: false, message: '连接失败：' + msg };
+      const result = reg.parseError(err, p);
+      return result;
     }
   }
 
@@ -130,6 +221,9 @@
     if (!p || !p.enabled) throw new Error('未启用的 Provider：' + provider);
     if (!p.model) throw new Error('请先配置模型名称');
 
+    const reg = getRegistryEntry(provider);
+    if (!reg) throw new Error('未知的 Provider：' + provider);
+
     // 历史消息数组：[{role: 'system'|'user'|'assistant', content}]
     const messages = [];
     if (options.system) messages.push({ role: 'system', content: options.system });
@@ -138,36 +232,16 @@
     }
     messages.push({ role: 'user', content: prompt });
 
-    let url, body;
     // 仅当显式请求流式或传入了 onChunk 回调时才用流
     const stream = options.stream === true || typeof options.onChunk === 'function';
     // 支持调用方覆盖 temperature / maxTokens
     const temperature = options.temperature != null ? options.temperature : (cfg.temperature ?? 0.7);
     const maxTokens = options.maxTokens != null ? options.maxTokens : (cfg.maxTokens ?? 2048);
 
-    if (provider === 'ollama') {
-      url = p.endpoint.replace(/\/$/, '') + '/api/chat';
-      body = {
-        model: p.model,
-        messages: messages,
-        stream: stream,
-        options: { temperature: temperature, num_predict: maxTokens },
-      };
-    } else {
-      url = p.endpoint.replace(/\/$/, '') + '/v1/chat/completions';
-      body = {
-        model: p.model,
-        messages: messages,
-        stream: stream,
-        temperature: temperature,
-        max_tokens: maxTokens,
-      };
-    }
-
-    const headers = { 'Content-Type': 'application/json' };
-    if (provider !== 'ollama') {
-      headers['Authorization'] = 'Bearer ' + (p.apiKey || '');
-    }
+    const buildOpts = { model: p.model, stream, temperature, maxTokens };
+    const url = p.endpoint.replace(/\/$/, '') + reg.endpointPath;
+    const body = reg.buildBody(messages, buildOpts);
+    const headers = reg.buildHeaders(p.apiKey);
 
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
     if (!res.ok) {
@@ -187,15 +261,10 @@
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        // 检测流式格式（OpenAI SSE vs Ollama JSON 行）
-        if (isFirstChunk) {
-          if (chunk.startsWith('data:')) {
-            // OpenAI 兼容格式（SSE）
-            isFirstChunk = 'sse';
-          } else {
-            // Ollama 格式（每行一个 JSON 对象）
-            isFirstChunk = 'ollama';
-          }
+
+        if (isFirstChunk === true) {
+          // 使用 registry 提供的格式检测方法
+          isFirstChunk = reg.isStreamingOllamaFormat(chunk) ? 'ollama' : 'sse';
         }
 
         buffer += chunk;
@@ -246,13 +315,7 @@
 
     // 非流式
     const data = await res.json();
-    let text = '';
-    // 优先按 provider 格式解析，失败时回退到其他常见格式
-    if (provider === 'ollama') {
-      text = (data.message && data.message.content) || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || data.response || '';
-    } else {
-      text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || (data.message && data.message.content) || data.response || '';
-    }
+    const text = reg.parseResponse(data);
     if (!text) throw new Error('模型未返回文本内容');
     if (options.onDone) options.onDone(text);
     return text;
