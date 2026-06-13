@@ -309,5 +309,6 @@ ${shotsHtml}
     exportMarkdown,
     exportJSON,
     exportHTML,
+    playPreviewFromPage,
   };
 })();

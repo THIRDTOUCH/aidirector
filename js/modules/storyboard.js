@@ -11,9 +11,24 @@
   const DC = window.DC;
   if (!DC) return;
 
+  // 读取时自动填充默认值，防御旧数据或直接 saveShots 缺字段的情况
+  const SHOT_DEFAULTS = {
+    cameraRig: 'tripod', depthOfField: 'medium', lightingStyle: 'natural',
+    lightingDirection: 'front', colorTemperature: 'neutral', focalLength: '50mm',
+    photographyTechnique: 'none', playbackSpeed: 'normal',
+    emotionTags: [], atmosphericEffects: [], effectIntensity: 'moderate',
+    movementAction: '', videoPrompt: '', ttsScript: '', imageUrl: '',
+  };
   function getShots() {
     const p = DC.ProjectManager.getCurrent();
-    return p ? (p.shots || []) : [];
+    if (!p) return [];
+    return (p.shots || []).map((s) => {
+      const withDefaults = Object.assign({}, SHOT_DEFAULTS, s);
+      // 兼容旧字段别名
+      withDefaults.movement = withDefaults.movement || withDefaults.camera || '固定';
+      withDefaults.camera = withDefaults.camera || withDefaults.movement || '固定';
+      return withDefaults;
+    });
   }
   function saveShots(list) {
     DC.ProjectManager.updateShots(list);
@@ -175,31 +190,22 @@
   }
 
   function openEditor(shot, idx) {
-    const s = shot || {
+    // 深度合并默认值，确保所有字段都有安全值（兼容直接 saveShots 调用而不走编辑器的场景）
+    const defaults = {
       id: uid(), sceneName: '', shotType: '中景', angle: '平视',
       movement: '固定', duration: 5, description: '', dialogue: '', prompt: '',
       cameraRig: 'tripod', depthOfField: 'medium', lightingStyle: 'natural',
       lightingDirection: 'front', colorTemperature: 'neutral', focalLength: '50mm',
       photographyTechnique: 'none', playbackSpeed: 'normal',
       emotionTags: [], atmosphericEffects: [], effectIntensity: 'moderate',
-      // 视频动作 + 配音脚本（新增字段）
-      videoPrompt: '',     // 视频动作/运镜提示词（英文）
-      movementAction: '', // 中文动作描述
-      ttsScript: '',     // 配音文字稿
+      movementAction: '', videoPrompt: '', ttsScript: '',
     };
+    const raw = shot || {};
+    const s = Object.assign({}, defaults, raw);
     // 兼容旧字段
     s.movement = s.movement || s.camera || '固定';
-    s.cameraRig = s.cameraRig || 'tripod';
-    s.depthOfField = s.depthOfField || 'medium';
-    s.lightingStyle = s.lightingStyle || 'natural';
-    s.lightingDirection = s.lightingDirection || 'front';
-    s.colorTemperature = s.colorTemperature || 'neutral';
-    s.focalLength = s.focalLength || '50mm';
-    s.photographyTechnique = s.photographyTechnique || 'none';
-    s.playbackSpeed = s.playbackSpeed || 'normal';
-    s.emotionTags = s.emotionTags || [];
-    s.atmosphericEffects = s.atmosphericEffects || [];
-    s.effectIntensity = s.effectIntensity || 'moderate';
+    // camera 字段别名（某些版本用 camera 而非 cameraRig）
+    s.camera = s.movement;
 
     // 获取当前项目的角色/场景列表
     const p = DC.ProjectManager.getCurrent();
@@ -432,8 +438,8 @@
             colorTemperature: body.querySelector('#sh-ct').value,
             photographyTechnique: body.querySelector('#sh-tech').value,
             playbackSpeed: body.querySelector('#sh-pb').value,
-            emotionTags: [],
-            atmosphericEffects: [],
+            emotionTags,
+            atmosphericEffects: atmEffects,
             effectIntensity: body.querySelector('#sh-intensity').value,
             description: body.querySelector('#sh-desc').value.trim(),
             dialogue: body.querySelector('#sh-dialog').value.trim(),
@@ -563,12 +569,29 @@
         id: uid(),
         sceneName: String(o.sceneName || ''),
         shotType: String(o.shotType || '中景'),
-        camera: String(o.camera || '固定镜头'),
+        angle: String(o.angle || '平视'),
+        movement: String(o.movement || o.camera || '固定'),
+        camera: String(o.camera || o.movement || '固定'),
         duration: parseInt(o.duration) || 5,
         description: String(o.description || ''),
         dialogue: String(o.dialogue || ''),
         prompt: String(o.prompt || ''),
         imageUrl: '',
+        // 扩展字段默认值
+        cameraRig: 'tripod',
+        depthOfField: 'medium',
+        lightingStyle: 'natural',
+        lightingDirection: 'front',
+        colorTemperature: 'neutral',
+        focalLength: '50mm',
+        photographyTechnique: 'none',
+        playbackSpeed: 'normal',
+        emotionTags: [],
+        atmosphericEffects: [],
+        effectIntensity: 'moderate',
+        movementAction: '',
+        videoPrompt: '',
+        ttsScript: '',
       }));
       const merged = existing.concat(newShots);
       saveShots(merged);

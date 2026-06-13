@@ -10,10 +10,12 @@
   const DC = window.DC;
   if (!DC) return;
 
+  // 读取时自动填充默认值，防御旧数据或直接 saveChars 缺字段的情况
+  const CHAR_DEFAULTS = { refImages: [] };
   function getChars() {
     const p = DC.ProjectManager.getCurrent();
     if (!p) return [];
-    return p.characters || [];
+    return (p.characters || []).map((c) => Object.assign({}, CHAR_DEFAULTS, c));
   }
   function saveChars(list) {
     DC.ProjectManager.updateCharacters(list);
@@ -92,8 +94,13 @@
   }
 
   function openEditor(char, idx) {
-    const c = char || { id: uid(), name: '', role: '', age: '', gender: '', appearance: '', face: '', costume: '', body: '', personality: '', background: '', prompt: '', refImages: [] };
-    c.refImages = c.refImages || [];
+    // 深度合并默认值，兼容直接 saveChars 调用不走编辑器的场景
+    const defaults = {
+      id: uid(), name: '', role: '', age: '', gender: '', appearance: '',
+      face: '', costume: '', body: '', personality: '', background: '',
+      prompt: '', refImages: [],
+    };
+    const c = Object.assign({}, defaults, char || {});
     const body = document.createElement('div');
     body.innerHTML = `
       <div class="form-grid">
@@ -189,6 +196,7 @@
         personality: String(o.personality || ''),
         background: String(o.background || ''),
         prompt: String(o.prompt || ''),
+        refImages: [], // 默认空数组，避免 UI 渲染报错
       })));
       saveChars(merged);
       render();

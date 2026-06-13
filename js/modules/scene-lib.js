@@ -10,10 +10,12 @@
   const DC = window.DC;
   if (!DC) return;
 
+  // 读取时自动填充默认值，防御旧数据或直接 saveScenes 缺字段的情况
+  const SCENE_DEFAULTS = { views: {} };
   function getScenes() {
     const p = DC.ProjectManager.getCurrent();
     if (!p) return [];
-    return p.scenes || [];
+    return (p.scenes || []).map((s) => Object.assign({}, SCENE_DEFAULTS, s));
   }
   function saveScenes(list) {
     DC.ProjectManager.updateScenes(list);
@@ -93,8 +95,12 @@
   }
 
   function openEditor(scene, idx) {
-    const s = scene || { id: uid(), name: '', time: '', location: '', weather: '', ambiance: '', lighting: '', props: '', description: '', views: {}, prompt: '', promptEn: '' };
-    s.views = s.views || {};
+    // 深度合并默认值，兼容直接 saveScenes 调用不走编辑器的场景
+    const defaults = {
+      id: uid(), name: '', time: '', location: '', weather: '', ambiance: '',
+      lighting: '', props: '', description: '', views: {}, prompt: '', promptEn: '',
+    };
+    const s = Object.assign({}, defaults, scene || {});
     const body = document.createElement('div');
     body.innerHTML = `
       <div class="form-grid">
@@ -198,6 +204,7 @@
         ambiance: String(o.ambiance || ''),
         description: String(o.description || ''),
         prompt: String(o.prompt || ''),
+        views: {}, // 默认空对象，避免 UI 渲染报错
       })));
       saveScenes(merged);
       render();
